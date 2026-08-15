@@ -1,0 +1,374 @@
+@page "/shift-assignment"
+@attribute [Authorize(Policy = "Shift.Manage")]
+@rendermode InteractiveServer
+
+@using Application.Common.Models
+@using Application.Features.Departments.Queries.GetDepartmentsWithLocations
+@using Application.Features.Employees.Queries.GetEmployeesByLocation
+@using Application.Features.Shifts.Commands.CreateShift
+@using Application.Common.Interfaces
+@using Domain.Common
+@using Microsoft.AspNetCore.Authorization
+
+@inject IHandler<GetDepartmentsWithLocationsQuery, Result<IReadOnlyList<DepartmentDto>>> GetDepartmentsHandler
+@inject IHandler<GetEmployeesByLocationQuery, Result<IReadOnlyList<EmployeeDto>>> GetEmployeesHandler
+@inject IHandler<Application.Features.Shifts.Queries.GetShifts.GetShiftsQuery, Result<IReadOnlyList<Application.Features.Shifts.Queries.GetShifts.ShiftDto>>> GetShiftsHandler
+@inject IHandler<CreateShiftCommand, Result<Guid>> CreateShiftHandler
+
+<PageTitle>Shift Assignment – ShiftManagement</PageTitle>
+
+<div class="sa-container">
+    <!-- ═══════════════════════════ PAGE HEADER ═══════════════════════════════ -->
+    <div class="sa-header">
+        <div class="sa-header__inner">
+            <div class="sa-header__brand">
+                <span class="sa-header__icon">📋</span>
+                <div>
+                    <h1 class="sa-header__title">Shift Assignment</h1>
+                    <p class="sa-header__subtitle">Select a location to assign shifts to employees</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════ MAIN BODY ════════════════════════════════ -->
+    <div class="sa-body">
+
+        <!-- ── LEFT PANEL: Department / Location accordion ──────────────────── -->
+        <aside class="sa-sidebar">
+            <div class="sa-sidebar__header">
+                <span class="sa-sidebar__icon">🏢</span>
+                <span class="sa-sidebar__label">Departments</span>
+            </div>
+
+            @if (_deptState == LoadState.Loading)
+            {
+                <div class="sa-skeleton">
+                    @for (int i = 0; i < 4; i++)
+                    {
+                        <div class="sa-skeleton__row"></div>
+                    }
+                </div>
+            }
+            else if (_deptState == LoadState.Error)
+            {
+                <div class="sa-alert-error">
+                    <span>⚠️</span> @_deptError
+                </div>
+            }
+            else
+            {
+                <div class="sa-accordion">
+                    @foreach (var dept in _departments)
+                    {
+                        var isOpen = _openDeptId == dept.Id;
+                        <div class="sa-accordion__item @(isOpen ? "sa-accordion__item--open" : "")">
+                            <button class="sa-accordion__trigger"
+                                    id="dept-@dept.Id"
+                                    aria-expanded="@isOpen.ToString().ToLower()"
+                                    @onclick="() => ToggleDept(dept.Id)">
+                                <span class="sa-accordion__dept-icon">🏗️</span>
+                                <span class="sa-accordion__dept-name">@dept.Name</span>
+                                <span class="sa-accordion__badge">@dept.Locations.Count</span>
+                                <span class="sa-accordion__chevron @(isOpen ? "sa-accordion__chevron--up" : "")">›</span>
+                            </button>
+
+                            @if (isOpen)
+                            {
+                                <div class="sa-accordion__body">
+                                    @foreach (var loc in dept.Locations)
+                                    {
+                                        var isSelected = _selectedLocation?.Id == loc.Id;
+                                        <button class="sa-location-btn @(isSelected ? "sa-location-btn--active" : "")"
+                                                id="loc-@loc.Id"
+                                                @onclick="() => SelectLocationAsync(loc)">
+                                            <span class="sa-location-btn__icon">📍</span>
+                                            <span class="sa-location-btn__name">@loc.Name</span>
+                                            <span class="sa-location-btn__count">@loc.EmployeeCount</span>
+                                        </button>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </aside>
+
+        <!-- ── RIGHT PANEL: Assignment form ─────────────────────────────────── -->
+        <main class="sa-panel">
+            @if (_selectedLocation is null)
+            {
+                <div class="sa-empty">
+                    <span class="sa-empty__icon">👈</span>
+                    <p class="sa-empty__title">Select a location</p>
+                    <p class="sa-empty__sub">Choose a department and location from the left panel to begin assigning shifts.</p>
+                </div>
+            }
+            else
+            {
+                <div class="sa-form-card">
+                    <!-- Card header -->
+                    <div class="sa-form-card__header">
+                        <div class="sa-form-card__loc">
+                            <span class="sa-form-card__loc-icon">📍</span>
+                            <div>
+                                <p class="sa-form-card__loc-dept">@_departments.First(d => d.Locations.Any(l => l.Id == _selectedLocation.Id)).Name</p>
+                                <h2 class="sa-form-card__loc-name">@_selectedLocation.Name</h2>
+                            </div>
+                        </div>
+                        <span class="sa-form-card__emp-count">@(_employees?.Count ?? 0) employees</span>
+                    </div>
+
+                    <!-- Toast -->
+                    @if (!string.IsNullOrEmpty(_toast))
+                    {
+                        <div class="sa-toast @(_toastSuccess ? "sa-toast--success" : "sa-toast--error")">
+                            <span>@(_toastSuccess ? "✅" : "❌")</span>
+                            @_toast
+                        </div>
+                    }
+
+                    <!-- Form -->
+                    <div class="sa-form">
+                        <!-- Shift template -->
+                        <div class="sa-form__group">
+                            <label class="sa-form__label" for="shift-select">Shift</label>
+                            <select class="sa-form__select" id="shift-select"
+                                    @bind="_selectedTemplateName"
+                                    disabled="@(_empState == LoadState.Loading)">
+                                <option value="">— Select a shift —</option>
+                                @foreach (var t in ShiftTemplate.All)
+                                {
+                                    <option value="@t.Name">@t.Name (@t.StartTime.ToString("HH:mm") – @t.EndTime.ToString("HH:mm"))</option>
+                                }
+                            </select>
+                        </div>
+
+                        <!-- Employee -->
+                        <div class="sa-form__group">
+                            <label class="sa-form__label" for="emp-select">Employee</label>
+                            @if (_empState == LoadState.Loading)
+                            {
+                                <div class="sa-skeleton__row sa-skeleton__row--select"></div>
+                            }
+                            else
+                            {
+                                <select class="sa-form__select" id="emp-select" @bind="_selectedEmployeeId">
+                                    <option value="">— Select an employee —</option>
+                                    @if (_employees is not null)
+                                    {
+                                        @foreach (var emp in _employees)
+                                        {
+                                            <option value="@emp.Id">@emp.Name</option>
+                                        }
+                                    }
+                                </select>
+                            }
+                        </div>
+
+                        <!-- Date -->
+                        <div class="sa-form__group">
+                            <label class="sa-form__label" for="date-select">Date</label>
+                            <input class="sa-form__input" id="date-select" type="date"
+                                   @bind="_shiftDate" @bind:format="yyyy-MM-dd"
+                                   min="@DateTime.Today.ToString("yyyy-MM-dd")" />
+                        </div>
+
+                        <!-- Notes (optional) -->
+                        <div class="sa-form__group">
+                            <label class="sa-form__label" for="notes-input">Notes <span class="sa-form__optional">(optional)</span></label>
+                            <input class="sa-form__input" id="notes-input" type="text"
+                                   placeholder="Any notes for this shift…"
+                                   @bind="_notes" maxlength="500" />
+                        </div>
+
+                        <button class="sa-form__submit"
+                                id="btn-assign-shift"
+                                disabled="@(!CanSubmit || _submitting)"
+                                @onclick="AssignShiftAsync">
+                            @if (_submitting)
+                            {
+                                <span class="sa-spinner"></span>
+                                <span>Assigning…</span>
+                            }
+                            else
+                            {
+                                <span>⚡ Assign Shift</span>
+                            }
+                        </button>
+                    </div>
+
+                    <!-- Existing shifts for this location -->
+                    @if (_locationShifts is not null && _locationShifts.Count > 0)
+                    {
+                        <div class="sa-recent">
+                            <p class="sa-recent__title">Recent shifts at this location</p>
+                            <div class="sa-recent__list">
+                                @foreach (var s in _locationShifts.Take(8))
+                                {
+                                    <div class="sa-recent__item">
+                                        <span class="sa-recent__emp">@s.EmployeeName</span>
+                                        <span class="sa-recent__date">@s.Date.ToString("MMM dd")</span>
+                                        <span class="sa-recent__time">@s.StartTime.ToString("HH:mm")–@s.EndTime.ToString("HH:mm")</span>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </main>
+    </div>
+</div>
+
+@code {
+    // ── State enums ──────────────────────────────────────────────────────────
+    private enum LoadState { Idle, Loading, Success, Error }
+
+    // ── Department/Location panel ────────────────────────────────────────────
+    private LoadState _deptState = LoadState.Loading;
+    private string? _deptError;
+    private IReadOnlyList<DepartmentDto> _departments = [];
+    private Guid? _openDeptId;
+
+    // ── Selected location ────────────────────────────────────────────────────
+    private LocationDto? _selectedLocation;
+    private LoadState _empState = LoadState.Idle;
+    private IReadOnlyList<EmployeeDto>? _employees;
+
+    // ── Recent shifts at the selected location ───────────────────────────────
+    private IReadOnlyList<Application.Features.Shifts.Queries.GetShifts.ShiftDto>? _locationShifts;
+
+    // ── Form fields ──────────────────────────────────────────────────────────
+    private string _selectedTemplateName = "";
+    private string _selectedEmployeeId = "";
+    private DateTime _shiftDate = DateTime.Today;
+    private string _notes = "";
+
+    // ── Submission state ─────────────────────────────────────────────────────
+    private bool _submitting;
+    private string? _toast;
+    private bool _toastSuccess;
+
+    private bool CanSubmit =>
+        !string.IsNullOrEmpty(_selectedTemplateName) &&
+        !string.IsNullOrEmpty(_selectedEmployeeId) &&
+        _selectedLocation is not null;
+
+    // ── Lifecycle ────────────────────────────────────────────────────────────
+    protected override async Task OnInitializedAsync()
+        => await LoadDepartmentsAsync();
+
+    // ── Data loading ─────────────────────────────────────────────────────────
+    private async Task LoadDepartmentsAsync()
+    {
+        _deptState = LoadState.Loading;
+        var result = await GetDepartmentsHandler.HandleAsync(new GetDepartmentsWithLocationsQuery());
+        if (result.IsSuccess)
+        {
+            _departments = result.Value;
+            _deptState = LoadState.Success;
+            if (_departments.Count > 0) _openDeptId = _departments[0].Id;
+        }
+        else
+        {
+            _deptError = result.Error.Description;
+            _deptState = LoadState.Error;
+        }
+    }
+
+    private async Task SelectLocationAsync(LocationDto loc, bool clearToast = true)
+    {
+        _selectedLocation = loc;
+        _selectedEmployeeId = "";
+        _selectedTemplateName = "";
+        _notes = "";
+        if (clearToast)
+        {
+            _toast = null;
+        }
+        _empState = LoadState.Loading;
+        _employees = null;
+        _locationShifts = null;
+
+        var empResult = await GetEmployeesHandler.HandleAsync(new GetEmployeesByLocationQuery(loc.Id));
+        _employees = empResult.IsSuccess ? empResult.Value : [];
+        _empState = LoadState.Success;
+
+        // Load existing shifts for employees in this location for context
+        if (_employees.Count > 0)
+        {
+            var allShifts = new List<Application.Features.Shifts.Queries.GetShifts.ShiftDto>();
+            foreach (var emp in _employees)
+            {
+                var sr = await GetShiftsHandler.HandleAsync(
+                    new Application.Features.Shifts.Queries.GetShifts.GetShiftsQuery(emp.Id));
+                if (sr.IsSuccess) allShifts.AddRange(sr.Value);
+            }
+            _locationShifts = allShifts
+                .OrderByDescending(s => s.Date)
+                .ThenBy(s => s.StartTime)
+                .ToList();
+        }
+    }
+
+    private void ToggleDept(Guid deptId)
+        => _openDeptId = _openDeptId == deptId ? null : deptId;
+
+    // ── Form submission ──────────────────────────────────────────────────────
+    private async Task AssignShiftAsync()
+    {
+        if (!CanSubmit) return;
+
+        _submitting = true;
+        _toast = null;
+        StateHasChanged();
+
+        var template = ShiftTemplate.All.First(t => t.Name == _selectedTemplateName);
+        var date = DateOnly.FromDateTime(_shiftDate);
+
+        // Night shift wraps past midnight — use the date as given by the user
+        var cmd = new CreateShiftCommand(
+            Guid.Parse(_selectedEmployeeId),
+            date,
+            template.StartTime,
+            template.EndTime,
+            string.IsNullOrWhiteSpace(_notes) ? null : _notes.Trim());
+
+        var result = await CreateShiftHandler.HandleAsync(cmd);
+
+        _submitting = false;
+
+        if (result.IsSuccess)
+        {
+            var emp = _employees!.First(e => e.Id.ToString() == _selectedEmployeeId);
+            var msg = $"{template.Name} shift assigned to {emp.Name} on {date:MMM dd}.";
+            ShowToast(msg, true);
+            // Reset form
+            _selectedTemplateName = "";
+            _selectedEmployeeId = "";
+            _notes = "";
+            // Refresh recent shifts
+            if (_selectedLocation is not null)
+                await SelectLocationAsync(_selectedLocation, clearToast: false);
+        }
+        else
+        {
+            ShowToast($"Error: {result.Error.Description}", false);
+        }
+    }
+
+    private void ShowToast(string message, bool isSuccess)
+    {
+        _toast = message;
+        _toastSuccess = isSuccess;
+        StateHasChanged();
+
+        _ = Task.Delay(5000).ContinueWith(_ =>
+        {
+            _toast = null;
+            InvokeAsync(StateHasChanged);
+        });
+    }
+}

@@ -1,0 +1,280 @@
+@page "/"
+@attribute [Authorize(Policy = "Shift.View")]
+@rendermode InteractiveServer
+
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Application.Features.Shifts.Queries.GetShifts
+@using Application.Common.Interfaces
+@using Domain.Common
+
+@inject IHandler<GetShiftsQuery, Result<IReadOnlyList<ShiftDto>>> GetShiftsHandler
+@inject AuthenticationStateProvider AuthStateProvider
+
+<PageTitle>Shift Dashboard – ShiftManagement</PageTitle>
+
+<div class="dash-container">
+    <!-- ─────────────────────────── DASHBOARD HEADER ─────────────────────────── -->
+    <div class="dash-header">
+        <div class="dash-header__inner">
+            <div class="dash-header__brand">
+                <span class="dash-header__icon">🗓</span>
+                <div>
+                    <h1 class="dash-header__title">Shift Dashboard</h1>
+                    <p class="dash-header__subtitle">Manage &amp; review employee shift schedules</p>
+                </div>
+            </div>
+            <div class="dash-header__user">
+                <span class="dash-header__avatar">@UserInitials</span>
+                <div class="dash-header__user-info">
+                    <span class="dash-header__user-name">@UserDisplayName</span>
+                    <span class="dash-header__user-role">Windows AD</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ─────────────────────────── STATS STRIP ──────────────────────────────── -->
+    @if (_state == PageState.Success && _shifts is not null)
+    {
+        <div class="stats-strip">
+            <div class="stat-card">
+                <span class="stat-card__value">@_shifts.Count</span>
+                <span class="stat-card__label">Total Shifts</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-card__value">@_shifts.Select(s => s.EmployeeId).Distinct().Count()</span>
+                <span class="stat-card__label">Employees</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-card__value">@_shifts.Count(s => s.Date == DateOnly.FromDateTime(DateTime.Today))</span>
+                <span class="stat-card__label">Today</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-card__value">@_shifts.Count(s => s.Date > DateOnly.FromDateTime(DateTime.Today))</span>
+                <span class="stat-card__label">Upcoming</span>
+            </div>
+        </div>
+    }
+
+    <!-- ─────────────────────────── FILTER BAR ───────────────────────────────── -->
+    <div class="filter-bar">
+        <div class="filter-bar__search">
+            <span class="filter-bar__search-icon">🔍</span>
+            <input class="filter-bar__input"
+                   type="text"
+                   placeholder="Filter by employee name…"
+                   @bind="_filterText"
+                   @bind:event="oninput" />
+        </div>
+        <div class="filter-bar__group">
+            <label class="filter-bar__label">Date</label>
+            <select class="filter-bar__select" @bind="_dateFilter">
+                <option value="all">All dates</option>
+                <option value="today">Today</option>
+                <option value="upcoming">Upcoming</option>
+                <option value="past">Past</option>
+            </select>
+        </div>
+        @if (_state == PageState.Success)
+        {
+            <span class="filter-bar__count">@FilteredShifts.Count() shifts</span>
+        }
+    </div>
+
+    <!-- ─────────────────────────── CONTENT AREA ─────────────────────────────── -->
+    <div class="content-area">
+
+        @if (_state == PageState.Loading)
+        {
+            <!-- Skeleton loader -->
+            <div class="skeleton-table">
+                @for (int i = 0; i < 6; i++)
+                {
+                    <div class="skeleton-row">
+                        <div class="skeleton-cell skeleton-cell--sm"></div>
+                        <div class="skeleton-cell skeleton-cell--md"></div>
+                        <div class="skeleton-cell skeleton-cell--lg"></div>
+                        <div class="skeleton-cell skeleton-cell--md"></div>
+                        <div class="skeleton-cell skeleton-cell--sm"></div>
+                    </div>
+                }
+            </div>
+        }
+        else if (_state == PageState.Error)
+        {
+            <div class="alert-error" role="alert">
+                <span class="alert-error__icon">⚠️</span>
+                <div>
+                    <strong>Failed to load shifts</strong>
+                    <p class="alert-error__desc">@_errorMessage</p>
+                </div>
+                <button class="btn-retry" @onclick="LoadShiftsAsync">Retry</button>
+            </div>
+        }
+        else if (_state == PageState.Success)
+        {
+            var rows = FilteredShifts.ToList();
+
+            @if (rows.Count == 0)
+            {
+                <div class="empty-state">
+                    <span class="empty-state__icon">📭</span>
+                    <p class="empty-state__text">No shifts match your filter.</p>
+                </div>
+            }
+            else
+            {
+                <div class="table-card">
+                    <table class="shift-table" aria-label="Shift schedule">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Employee</th>
+                                <th>Start</th>
+                                <th>End</th>
+                                <th>Duration</th>
+                                <th>Notes</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var shift in rows)
+                            {
+                                var duration = shift.EndTime - shift.StartTime;
+                                var isToday = shift.Date == DateOnly.FromDateTime(DateTime.Today);
+                                var isPast = shift.Date < DateOnly.FromDateTime(DateTime.Today);
+
+                                <tr class="shift-row @(isToday ? "shift-row--today" : "") @(isPast ? "shift-row--past" : "")">
+                                    <td>
+                                        <div class="date-cell">
+                                            <span class="date-cell__day">@shift.Date.ToString("ddd")</span>
+                                            <span class="date-cell__date">@shift.Date.ToString("MMM dd")</span>
+                                            @if (isToday)
+                                            {
+                                                <span class="badge badge--today">Today</span>
+                                            }
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="employee-cell">
+                                            <span class="employee-cell__avatar">@GetInitials(shift.EmployeeName)</span>
+                                            <span class="employee-cell__name">@shift.EmployeeName</span>
+                                        </div>
+                                    </td>
+                                    <td><span class="time-badge">@shift.StartTime.ToString("HH:mm")</span></td>
+                                    <td><span class="time-badge">@shift.EndTime.ToString("HH:mm")</span></td>
+                                    <td>
+                                        <span class="duration-badge">
+                                            @($"{(int)duration.TotalHours:D2}h {duration.Minutes:D2}m")
+                                        </span>
+                                    </td>
+                                    <td class="notes-cell">@(shift.Notes ?? "—")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    // ── State ─────────────────────────────────────────────────────────────────
+    private enum PageState { Loading, Success, Error }
+    private PageState _state = PageState.Loading;
+
+    private IReadOnlyList<ShiftDto>? _shifts;
+    private string? _errorMessage;
+    private string _filterText = string.Empty;
+    private string _dateFilter = "all";
+
+    // ── User info ─────────────────────────────────────────────────────────────
+    private string UserDisplayName { get; set; } = "Loading…";
+    private string UserInitials { get; set; } = "?";
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
+    protected override async Task OnInitializedAsync()
+    {
+        await ResolveUserAsync();
+        await LoadShiftsAsync();
+    }
+
+    private async Task ResolveUserAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            // Windows identity: Identity.Name is typically DOMAIN\username
+            var name = user.Identity.Name ?? "Unknown User";
+            // Strip domain prefix if present
+            var display = name.Contains('\\') ? name[(name.LastIndexOf('\\') + 1)..] : name;
+            UserDisplayName = display;
+            UserInitials = GetInitials(display);
+        }
+        else
+        {
+            UserDisplayName = "Unauthenticated";
+            UserInitials = "?";
+        }
+    }
+
+    private async Task LoadShiftsAsync()
+    {
+        _state = PageState.Loading;
+        _errorMessage = null;
+        StateHasChanged();
+
+        Result<IReadOnlyList<ShiftDto>> result = await GetShiftsHandler.HandleAsync(new GetShiftsQuery());
+
+        if (result.IsSuccess)
+        {
+            _shifts = result.Value;
+            _state = PageState.Success;
+        }
+        else
+        {
+            _errorMessage = $"[{result.Error.Code}] {result.Error.Description}";
+            _state = PageState.Error;
+        }
+    }
+
+    // ── Filtering ─────────────────────────────────────────────────────────────
+    private IEnumerable<ShiftDto> FilteredShifts
+    {
+        get
+        {
+            if (_shifts is null) return [];
+
+            var today = DateOnly.FromDateTime(DateTime.Today);
+            var q = _shifts.AsEnumerable();
+
+            if (!string.IsNullOrWhiteSpace(_filterText))
+                q = q.Where(s => s.EmployeeName.Contains(_filterText, StringComparison.OrdinalIgnoreCase));
+
+            q = _dateFilter switch
+            {
+                "today"    => q.Where(s => s.Date == today),
+                "upcoming" => q.Where(s => s.Date > today),
+                "past"     => q.Where(s => s.Date < today),
+                _          => q
+            };
+
+            return q.OrderBy(s => s.Date).ThenBy(s => s.StartTime);
+        }
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+    private static string GetInitials(string name)
+    {
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length switch
+        {
+            0 => "?",
+            1 => parts[0][..Math.Min(2, parts[0].Length)].ToUpperInvariant(),
+            _ => $"{parts[0][0]}{parts[^1][0]}".ToUpperInvariant()
+        };
+    }
+}

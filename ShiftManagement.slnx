@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="Application/Application.csproj" />
+  <Project Path="Domain/Domain.csproj" />
+  <Project Path="Infrastrcuture/Infrastrcuture.csproj" />
+  <Project Path="ShiftManagement/ShiftManagement.csproj" />
+</Solution>

@@ -1,0 +1,658 @@
+@page "/roles-permissions"
+@attribute [Authorize(Policy = "Role.Manage")]
+@rendermode InteractiveServer
+
+@using Application.Features.Security.Dtos
+@using Application.Features.Security.Queries.GetRolesWithPermissions
+@using Application.Features.Security.Queries.GetPermissions
+@using Application.Features.Security.Queries.GetEmployeesWithRoles
+@using Application.Features.Security.Commands.CreateRole
+@using Application.Features.Security.Commands.UpdateRole
+@using Application.Features.Security.Commands.DeleteRole
+@using Application.Features.Security.Commands.UpdateEmployeeRoles
+@using Application.Common.Interfaces
+@using Domain.Common
+@using Microsoft.AspNetCore.Authorization
+
+@inject IHandler<GetRolesWithPermissionsQuery, Result<IReadOnlyList<RoleDto>>> GetRolesHandler
+@inject IHandler<GetPermissionsQuery, Result<IReadOnlyList<PermissionDto>>> GetPermissionsHandler
+@inject IHandler<GetEmployeesWithRolesQuery, Result<IReadOnlyList<EmployeeWithRolesDto>>> GetEmployeesHandler
+@inject IHandler<CreateRoleCommand, Result> CreateRoleHandler
+@inject IHandler<UpdateRoleCommand, Result> UpdateRoleHandler
+@inject IHandler<DeleteRoleCommand, Result> DeleteRoleHandler
+@inject IHandler<UpdateEmployeeRolesCommand, Result> UpdateEmployeeRolesHandler
+
+<PageTitle>Roles & Permissions – ShiftManagement</PageTitle>
+
+<div class="sec-container">
+    <!-- ═══════════════════════════ PAGE HEADER ═══════════════════════════════ -->
+    <div class="sec-header">
+        <div class="sec-header__inner">
+            <div class="sec-header__brand">
+                <span class="sec-header__icon">🛡️</span>
+                <div>
+                    <h1 class="sec-header__title">Security Configuration</h1>
+                    <p class="sec-header__subtitle">Manage authorization policies, custom roles, and employee permissions</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════ TAB NAVIGATION ════════════════════════════ -->
+    <div class="sec-tabs">
+        <button class="sec-tab @(_activeTab == Tab.Roles ? "sec-tab--active" : "")" @onclick="() => SetActiveTab(Tab.Roles)">
+            🔑 Roles & Permissions
+        </button>
+        <button class="sec-tab @(_activeTab == Tab.Employees ? "sec-tab--active" : "")" @onclick="() => SetActiveTab(Tab.Employees)">
+            👥 Employee Role Assignment
+        </button>
+    </div>
+
+    <!-- ═══════════════════════════ MAIN CONTENT ════════════════════════════════ -->
+    <div class="sec-body">
+        <!-- Toast notifications -->
+        @if (!string.IsNullOrEmpty(_toastMessage))
+        {
+            <div class="sa-toast @(_toastSuccess ? "sa-toast--success" : "sa-toast--error")">
+                <span>@(_toastSuccess ? "✅" : "❌")</span>
+                @_toastMessage
+            </div>
+        }
+
+        @if (_loadState == LoadState.Loading)
+        {
+            <div class="sa-skeleton">
+                @for (int i = 0; i < 5; i++)
+                {
+                    <div class="sa-skeleton__row"></div>
+                }
+            </div>
+        }
+        else if (_loadState == LoadState.Error)
+        {
+            <div class="sa-alert-error">
+                <span>⚠️</span> @_errorMsg
+            </div>
+        }
+        else
+        {
+            @if (_activeTab == Tab.Roles)
+            {
+                <!-- ═══════════════════════ ROLES TAB ═══════════════════════ -->
+                <div class="filter-bar">
+                    <div class="filter-bar__search">
+                        <span class="filter-bar__search-icon">🔍</span>
+                        <input class="filter-bar__input"
+                               type="text"
+                               placeholder="Search roles by name..."
+                               @bind="_searchRoleText"
+                               @bind:event="oninput" />
+                    </div>
+                    <button class="btn-primary-custom" @onclick="OpenAddRoleDrawer">
+                        ➕ Add New Role
+                    </button>
+                </div>
+
+                var filteredRoles = FilteredRoles.ToList();
+                @if (filteredRoles.Count == 0)
+                {
+                    <div class="sa-empty">
+                        <span class="sa-empty__icon">🔍</span>
+                        <p class="sa-empty__title">No roles found</p>
+                        <p class="sa-empty__sub">Try adjusting your search terms.</p>
+                    </div>
+                }
+                else
+                {
+                    <div class="table-container">
+                        <table class="sec-table">
+                            <thead>
+                                <tr>
+                                    <th>Role Name</th>
+                                    <th>Permissions Assigned</th>
+                                    <th class="text-end">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var role in filteredRoles)
+                                {
+                                    var isSystem = IsSystemRole(role.Name);
+                                    <tr>
+                                        <td>
+                                            <div class="role-cell">
+                                                <span class="role-icon">@(isSystem ? "⚙️" : "👤")</span>
+                                                <div>
+                                                    <span class="role-name">@role.Name</span>
+                                                    @if (isSystem)
+                                                    {
+                                                        <span class="system-badge">System Default</span>
+                                                    }
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <div class="badge-container">
+                                                @if (role.Permissions.Count == 0)
+                                                {
+                                                    <span class="badge-none">No Permissions</span>
+                                                }
+                                                else
+                                                {
+                                                    @foreach (var perm in role.Permissions.OrderBy(p => p.Name))
+                                                    {
+                                                        <span class="badge-perm @GetPermClass(perm.Name)">
+                                                            @perm.Name
+                                                        </span>
+                                                    }
+                                                }
+                                            </div>
+                                        </td>
+                                        <td class="text-end">
+                                            <div class="action-buttons">
+                                                <button class="btn-action-edit" @onclick="() => OpenEditRoleDrawer(role)">
+                                                    ✏️ Edit
+                                                </button>
+                                                @if (!isSystem)
+                                                {
+                                                    <button class="btn-action-delete" @onclick="() => DeleteRoleAsync(role)">
+                                                        🗑️ Delete
+                                                    </button>
+                                                }
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            }
+            else
+            {
+                <!-- ═══════════════════════ EMPLOYEES TAB ═══════════════════════ -->
+                <div class="filter-bar">
+                    <div class="filter-bar__search">
+                        <span class="filter-bar__search-icon">🔍</span>
+                        <input class="filter-bar__input"
+                               type="text"
+                               placeholder="Search employees by name or username..."
+                               @bind="_searchEmpText"
+                               @bind:event="oninput" />
+                    </div>
+                </div>
+
+                var filteredEmps = FilteredEmployees.ToList();
+                @if (filteredEmps.Count == 0)
+                {
+                    <div class="sa-empty">
+                        <span class="sa-empty__icon">🔍</span>
+                        <p class="sa-empty__title">No employees found</p>
+                        <p class="sa-empty__sub">Try adjusting your search terms.</p>
+                    </div>
+                }
+                else
+                {
+                    <div class="table-container">
+                        <table class="sec-table">
+                            <thead>
+                                <tr>
+                                    <th>Employee</th>
+                                    <th>Username</th>
+                                    <th>Assigned Roles</th>
+                                    <th class="text-end">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var emp in filteredEmps)
+                                {
+                                    <tr>
+                                        <td>
+                                            <div class="role-cell">
+                                                <div class="emp-avatar">@GetInitials(emp.Name)</div>
+                                                <span class="role-name">@emp.Name</span>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <span class="emp-user">@emp.Username</span>
+                                        </td>
+                                        <td>
+                                            <div class="badge-container">
+                                                @if (emp.Roles.Count == 0)
+                                                {
+                                                    <span class="badge-none">No Roles</span>
+                                                }
+                                                else
+                                                {
+                                                    @foreach (var role in emp.Roles.OrderBy(r => r.Name))
+                                                    {
+                                                        <span class="badge-role">
+                                                            @role.Name
+                                                        </span>
+                                                    }
+                                                }
+                                            </div>
+                                        </td>
+                                        <td class="text-end">
+                                            <button class="btn-action-edit" @onclick="() => OpenEditEmpRolesDrawer(emp)">
+                                                🔑 Manage Roles
+                                            </button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            }
+        }
+    </div>
+
+    <!-- ═══════════════════════════ ROLE DRAWER ════════════════════════════════ -->
+    <div class="drawer-overlay @(_isRoleDrawerOpen ? "drawer-overlay--active" : "")" @onclick="CloseRoleDrawer"></div>
+
+    <div class="drawer-content @(_isRoleDrawerOpen ? "drawer-content--active" : "")">
+        <div class="drawer-header">
+            <h3 class="drawer-title">@(_editingRole == null ? "Create New Role" : $"Edit Role: {_editingRole.Name}")</h3>
+            <button class="btn-close-drawer" @onclick="CloseRoleDrawer">&times;</button>
+        </div>
+
+        <div class="drawer-body">
+            <div class="drawer-form-group">
+                <label class="drawer-form-label">Role Name</label>
+                <input class="drawer-form-input" 
+                       type="text" 
+                       placeholder="Enter role name (e.g. Supervisor)" 
+                       @bind="_roleFormName" 
+                       disabled="@IsSystemRole(_editingRole?.Name)" />
+                @if (IsSystemRole(_editingRole?.Name))
+                {
+                    <span class="drawer-form-help">System default role name cannot be modified.</span>
+                }
+            </div>
+
+            <div class="drawer-form-group">
+                <label class="drawer-form-label">Permissions Assignment</label>
+                <div class="permissions-checklist">
+                    @foreach (var perm in _permissions)
+                    {
+                        <label class="checklist-item">
+                            <input type="checkbox" 
+                                   checked="@_roleFormPermissionIds.Contains(perm.Id)"
+                                   @onchange="(e) => TogglePermission(perm.Id, e.Value)" />
+                            <div class="checklist-item__details">
+                                <span class="checklist-item__title">@perm.Name</span>
+                                <span class="checklist-item__desc">@GetPermissionDescription(perm.Name)</span>
+                            </div>
+                        </label>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <div class="drawer-footer">
+            <button class="btn-drawer-cancel" @onclick="CloseRoleDrawer" disabled="@_submitting">Cancel</button>
+            <button class="btn-drawer-save" @onclick="SaveRoleAsync" disabled="@_submitting">
+                @if (_submitting)
+                {
+                    <span class="spinner">⏳</span><span> Saving...</span>
+                }
+                else
+                {
+                    <span>💾 Save Role</span>
+                }
+            </button>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════ EMPLOYEE DRAWER ════════════════════════════ -->
+    <div class="drawer-overlay @(_isEmpDrawerOpen ? "drawer-overlay--active" : "")" @onclick="CloseEmpDrawer"></div>
+
+    <div class="drawer-content @(_isEmpDrawerOpen ? "drawer-content--active" : "")">
+        <div class="drawer-header">
+            <h3 class="drawer-title">Manage Employee Roles</h3>
+            <button class="btn-close-drawer" @onclick="CloseEmpDrawer">&times;</button>
+        </div>
+
+        @if (_selectedEmp != null)
+        {
+            <div class="drawer-body">
+                <div class="drawer-emp-info">
+                    <div class="drawer-avatar">@GetInitials(_selectedEmp.Name)</div>
+                    <div>
+                        <h4 class="drawer-emp-name">@_selectedEmp.Name</h4>
+                        <span class="drawer-emp-user">@_selectedEmp.Username</span>
+                    </div>
+                </div>
+
+                <div class="drawer-form-group">
+                    <label class="drawer-form-label">Assigned Roles</label>
+                    <div class="permissions-checklist">
+                        @foreach (var role in _roles)
+                        {
+                            <label class="checklist-item">
+                                <input type="checkbox" 
+                                       checked="@_empFormRoleIds.Contains(role.Id)"
+                                       @onchange="(e) => ToggleRole(role.Id, e.Value)" />
+                                <div class="checklist-item__details">
+                                    <span class="checklist-item__title">@role.Name</span>
+                                    <span class="checklist-item__desc">
+                                        @if (role.Name == "Admin")
+                                        {
+                                            <span>Full system administrator rights</span>
+                                        }
+                                        else if (role.Name == "Manager")
+                                        {
+                                            <span>Manage shifts and view employees</span>
+                                        }
+                                        else if (role.Name == "Employee")
+                                        {
+                                            <span>View shifts and view employees</span>
+                                        }
+                                        else
+                                        {
+                                            <span>Custom user-defined role</span>
+                                        }
+                                    </span>
+                                </div>
+                            </label>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+
+        <div class="drawer-footer">
+            <button class="btn-drawer-cancel" @onclick="CloseEmpDrawer" disabled="@_submitting">Cancel</button>
+            <button class="btn-drawer-save" @onclick="SaveEmpRolesAsync" disabled="@_submitting">
+                @if (_submitting)
+                {
+                    <span class="spinner">⏳</span><span> Saving...</span>
+                }
+                else
+                {
+                    <span>💾 Save Changes</span>
+                }
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    private enum Tab { Roles, Employees }
+    private enum LoadState { Loading, Success, Error }
+
+    private Tab _activeTab = Tab.Roles;
+    private LoadState _loadState = LoadState.Loading;
+    private string _errorMsg = "";
+
+    // Data lists
+    private IReadOnlyList<RoleDto> _roles = [];
+    private IReadOnlyList<PermissionDto> _permissions = [];
+    private IReadOnlyList<EmployeeWithRolesDto> _employees = [];
+
+    // Search filters
+    private string _searchRoleText = "";
+    private string _searchEmpText = "";
+
+    // Toast State
+    private string _toastMessage = "";
+    private bool _toastSuccess = true;
+
+    // Submission State
+    private bool _submitting = false;
+
+    // Drawer state - Role
+    private bool _isRoleDrawerOpen = false;
+    private RoleDto? _editingRole = null;
+    private string _roleFormName = "";
+    private List<Guid> _roleFormPermissionIds = [];
+
+    // Drawer state - Employee
+    private bool _isEmpDrawerOpen = false;
+    private EmployeeWithRolesDto? _selectedEmp = null;
+    private List<Guid> _empFormRoleIds = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    private void SetActiveTab(Tab tab)
+    {
+        _activeTab = tab;
+    }
+
+    private async Task LoadDataAsync()
+    {
+        _loadState = LoadState.Loading;
+        StateHasChanged();
+
+        var rolesTask = GetRolesHandler.HandleAsync(new GetRolesWithPermissionsQuery());
+        var permsTask = GetPermissionsHandler.HandleAsync(new GetPermissionsQuery());
+        var empsTask = GetEmployeesHandler.HandleAsync(new GetEmployeesWithRolesQuery());
+
+        await Task.WhenAll(rolesTask, permsTask, empsTask);
+
+        var rolesRes = rolesTask.Result;
+        var permsRes = permsTask.Result;
+        var empsRes = empsTask.Result;
+
+        if (rolesRes.IsSuccess && permsRes.IsSuccess && empsRes.IsSuccess)
+        {
+            _roles = rolesRes.Value;
+            _permissions = permsRes.Value;
+            _employees = empsRes.Value;
+            _loadState = LoadState.Success;
+        }
+        else
+        {
+            _errorMsg = rolesRes.Error.Description ?? permsRes.Error.Description ?? empsRes.Error.Description ?? "Failed to load security settings.";
+            _loadState = LoadState.Error;
+        }
+    }
+
+    private IEnumerable<RoleDto> FilteredRoles =>
+        string.IsNullOrWhiteSpace(_searchRoleText)
+            ? _roles
+            : _roles.Where(r => r.Name.Contains(_searchRoleText, StringComparison.OrdinalIgnoreCase));
+
+    private IEnumerable<EmployeeWithRolesDto> FilteredEmployees =>
+        string.IsNullOrWhiteSpace(_searchEmpText)
+            ? _employees
+            : _employees.Where(e => e.Name.Contains(_searchEmpText, StringComparison.OrdinalIgnoreCase) ||
+                                    e.Username.Contains(_searchEmpText, StringComparison.OrdinalIgnoreCase));
+
+    private bool IsSystemRole(string? name) =>
+        name == "Admin" || name == "Manager" || name == "Employee";
+
+    private string GetPermClass(string name)
+    {
+        if (name.StartsWith("Employee", StringComparison.OrdinalIgnoreCase)) return "badge-perm--emp";
+        if (name.StartsWith("Shift", StringComparison.OrdinalIgnoreCase)) return "badge-perm--shift";
+        if (name.StartsWith("Role", StringComparison.OrdinalIgnoreCase)) return "badge-perm--role";
+        return "badge-perm--other";
+    }
+
+    private string GetPermissionDescription(string name)
+    {
+        return name switch
+        {
+            "Employee.View" => "View employees, departments, and active location assignments.",
+            "Employee.Manage" => "Manage employee assignments, departments, and location configurations.",
+            "Shift.View" => "View shifts and rosters on calendar and list screens.",
+            "Shift.Manage" => "Assign, change, delete, and manage shifts for employees.",
+            "Role.Manage" => "Access and modify security roles and permission configurations.",
+            _ => "User-defined custom permission policy."
+        };
+    }
+
+    private string GetInitials(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "?";
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0) return "?";
+        if (parts.Length == 1) return parts[0][0].ToString().ToUpper();
+        return (parts[0][0].ToString() + parts[parts.Length - 1][0].ToString()).ToUpper();
+    }
+
+    // Role Drawer Control
+    private void OpenAddRoleDrawer()
+    {
+        _editingRole = null;
+        _roleFormName = "";
+        _roleFormPermissionIds = [];
+        _isRoleDrawerOpen = true;
+    }
+
+    private void OpenEditRoleDrawer(RoleDto role)
+    {
+        _editingRole = role;
+        _roleFormName = role.Name;
+        _roleFormPermissionIds = role.Permissions.Select(p => p.Id).ToList();
+        _isRoleDrawerOpen = true;
+    }
+
+    private void CloseRoleDrawer()
+    {
+        _isRoleDrawerOpen = false;
+        _editingRole = null;
+        _roleFormName = "";
+        _roleFormPermissionIds = [];
+    }
+
+    private void TogglePermission(Guid permId, object? checkedValue)
+    {
+        var isChecked = checkedValue is bool b && b;
+        if (isChecked)
+        {
+            if (!_roleFormPermissionIds.Contains(permId))
+                _roleFormPermissionIds.Add(permId);
+        }
+        else
+        {
+            _roleFormPermissionIds.Remove(permId);
+        }
+    }
+
+    private async Task SaveRoleAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_roleFormName))
+        {
+            ShowToast("Role name cannot be empty.", false);
+            return;
+        }
+
+        _submitting = true;
+        StateHasChanged();
+
+        Result result;
+
+        if (_editingRole == null)
+        {
+            // Create
+            result = await CreateRoleHandler.HandleAsync(new CreateRoleCommand(_roleFormName, _roleFormPermissionIds));
+        }
+        else
+        {
+            // Update
+            result = await UpdateRoleHandler.HandleAsync(new UpdateRoleCommand(_editingRole.Id, _roleFormName, _roleFormPermissionIds));
+        }
+
+        _submitting = false;
+
+        if (result.IsSuccess)
+        {
+            ShowToast($"Successfully saved role '{_roleFormName}'.", true);
+            CloseRoleDrawer();
+            await LoadDataAsync();
+        }
+        else
+        {
+            ShowToast(result.Error.Description ?? "An error occurred while saving the role.", false);
+        }
+    }
+
+    private async Task DeleteRoleAsync(RoleDto role)
+    {
+        var confirmed = await Microsoft.JSInterop.JSRuntimeExtensions.InvokeAsync<bool>(
+            null!, "confirm", $"Are you sure you want to delete the role '{role.Name}'? This action cannot be undone.");
+
+        if (!confirmed) return;
+
+        var result = await DeleteRoleHandler.HandleAsync(new DeleteRoleCommand(role.Id));
+        if (result.IsSuccess)
+        {
+            ShowToast($"Successfully deleted role '{role.Name}'.", true);
+            await LoadDataAsync();
+        }
+        else
+        {
+            ShowToast(result.Error.Description ?? "An error occurred while deleting the role.", false);
+        }
+    }
+
+    // Employee Drawer Control
+    private void OpenEditEmpRolesDrawer(EmployeeWithRolesDto emp)
+    {
+        _selectedEmp = emp;
+        _empFormRoleIds = emp.Roles.Select(r => r.Id).ToList();
+        _isEmpDrawerOpen = true;
+    }
+
+    private void CloseEmpDrawer()
+    {
+        _isEmpDrawerOpen = false;
+        _selectedEmp = null;
+        _empFormRoleIds = [];
+    }
+
+    private void ToggleRole(Guid roleId, object? checkedValue)
+    {
+        var isChecked = checkedValue is bool b && b;
+        if (isChecked)
+        {
+            if (!_empFormRoleIds.Contains(roleId))
+                _empFormRoleIds.Add(roleId);
+        }
+        else
+        {
+            _empFormRoleIds.Remove(roleId);
+        }
+    }
+
+    private async Task SaveEmpRolesAsync()
+    {
+        if (_selectedEmp == null) return;
+
+        _submitting = true;
+        StateHasChanged();
+
+        var result = await UpdateEmployeeRolesHandler.HandleAsync(new UpdateEmployeeRolesCommand(_selectedEmp.Id, _empFormRoleIds));
+
+        _submitting = false;
+
+        if (result.IsSuccess)
+        {
+            ShowToast($"Successfully updated roles for {_selectedEmp.Name}.", true);
+            CloseEmpDrawer();
+            await LoadDataAsync();
+        }
+        else
+        {
+            ShowToast(result.Error.Description ?? "An error occurred while updating roles.", false);
+        }
+    }
+
+    private void ShowToast(string message, bool isSuccess)
+    {
+        _toastMessage = message;
+        _toastSuccess = isSuccess;
+        StateHasChanged();
+
+        _ = Task.Delay(5000).ContinueWith(_ =>
+        {
+            _toastMessage = "";
+            InvokeAsync(StateHasChanged);
+        });
+    }
+}

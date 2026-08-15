@@ -1,0 +1,451 @@
+@page "/employees"
+@attribute [Authorize(Policy = "Employee.View")]
+@rendermode InteractiveServer
+
+@using Application.Features.Employees.Queries.GetEmployeesWithDetails
+@using Application.Features.Departments.Queries.GetDepartmentsWithLocations
+@using Application.Features.Employees.Commands.UpdateEmployeeLocation
+@using Application.Common.Interfaces
+@using Domain.Common
+@using Microsoft.AspNetCore.Authorization
+
+@inject IHandler<GetEmployeesWithDetailsQuery, Result<IReadOnlyList<EmployeeWithDetailsDto>>> GetEmployeesHandler
+@inject IHandler<GetDepartmentsWithLocationsQuery, Result<IReadOnlyList<DepartmentDto>>> GetDepartmentsHandler
+@inject IHandler<UpdateEmployeeLocationCommand, Result> UpdateLocationHandler
+@inject IAuthorizationService AuthorizationService
+@inject AuthenticationStateProvider AuthStateProvider
+
+<PageTitle>Employees – ShiftManagement</PageTitle>
+
+<div class="emp-container">
+    <!-- ═══════════════════════════ PAGE HEADER ═══════════════════════════════ -->
+    <div class="emp-header">
+        <div class="emp-header__inner">
+            <div class="emp-header__brand">
+                <span class="emp-header__icon">👥</span>
+                <div>
+                    <h1 class="emp-header__title">Employee Management</h1>
+                    <p class="emp-header__subtitle">Manage employee locations and organizational assignments</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════ STATS STRIP ════════════════════════════════ -->
+    @if (_employeesState == LoadState.Success)
+    {
+        <div class="stats-strip">
+            <div class="stat-card">
+                <span class="stat-card__value">@_employees.Count</span>
+                <span class="stat-card__label">Total Employees</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-card__value">@_employees.Count(e => e.LocationId.HasValue)</span>
+                <span class="stat-card__label">Assigned Location</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-card__value">@_employees.Count(e => !e.LocationId.HasValue)</span>
+                <span class="stat-card__label">Unassigned</span>
+            </div>
+        </div>
+    }
+
+    <!-- ═══════════════════════════ FILTER BAR ═════════════════════════════════ -->
+    <div class="filter-bar">
+        <div class="filter-bar__search">
+            <span class="filter-bar__search-icon">🔍</span>
+            <input class="filter-bar__input"
+                   type="text"
+                   placeholder="Search by name or username…"
+                   @bind="_searchText"
+                   @bind:event="oninput" />
+        </div>
+
+        <div class="filter-bar__filters">
+            <div class="filter-bar__group">
+                <label class="filter-bar__label" for="filter-dept">Department</label>
+                <select class="filter-bar__select" id="filter-dept" @onchange="OnDepartmentFilterChanged">
+                    <option value="">All Departments</option>
+                    @foreach (var dept in _departments)
+                    {
+                        <option value="@dept.Id">@dept.Name</option>
+                    }
+                </select>
+            </div>
+
+            <div class="filter-bar__group">
+                <label class="filter-bar__label" for="filter-loc">Location</label>
+                <select class="filter-bar__select" id="filter-loc" @bind="_selectedLocFilter">
+                    <option value="">All Locations</option>
+                    @foreach (var loc in AvailableLocationsForFilter)
+                    {
+                        <option value="@loc.Id">@loc.Name</option>
+                    }
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════ MAIN TABLE / CONTENT ══════════════════════ -->
+    <div class="emp-body">
+        <!-- Toast notifications -->
+        @if (!string.IsNullOrEmpty(_toastMessage))
+        {
+            <div class="sa-toast @(_toastSuccess ? "sa-toast--success" : "sa-toast--error")">
+                <span>@(_toastSuccess ? "✅" : "❌")</span>
+                @_toastMessage
+            </div>
+        }
+
+        @if (_employeesState == LoadState.Loading || _deptState == LoadState.Loading)
+        {
+            <div class="sa-skeleton">
+                @for (int i = 0; i < 5; i++)
+                {
+                    <div class="sa-skeleton__row"></div>
+                }
+            </div>
+        }
+        else if (_employeesState == LoadState.Error)
+        {
+            <div class="sa-alert-error">
+                <span>⚠️</span> @_errorMsg
+            </div>
+        }
+        else
+        {
+            var filteredList = FilteredEmployees.ToList();
+
+            @if (filteredList.Count == 0)
+            {
+                <div class="sa-empty">
+                    <span class="sa-empty__icon">🔍</span>
+                    <p class="sa-empty__title">No employees found</p>
+                    <p class="sa-empty__sub">Try adjusting your filters or search terms.</p>
+                </div>
+            }
+            else
+            {
+                <div class="table-container">
+                    <table class="emp-table">
+                        <thead>
+                            <tr>
+                                <th>Employee</th>
+                                <th>Username</th>
+                                <th>Department</th>
+                                <th>Location</th>
+                                <th class="text-end">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var emp in filteredList)
+                            {
+                                <tr>
+                                    <td>
+                                        <div class="emp-cell">
+                                            <div class="emp-avatar">@GetInitials(emp.Name)</div>
+                                            <span class="emp-name">@emp.Name</span>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <span class="emp-username">@emp.Username</span>
+                                    </td>
+                                    <td>
+                                        @if (!string.IsNullOrEmpty(emp.DepartmentName))
+                                        {
+                                            <span class="badge badge-dept">@emp.DepartmentName</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">—</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (!string.IsNullOrEmpty(emp.LocationName))
+                                        {
+                                            <span class="badge badge-loc">📍 @emp.LocationName</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">Unassigned</span>
+                                        }
+                                    </td>
+                                    <td class="text-end">
+                                        <button class="btn-edit-loc" @onclick="() => OpenDrawer(emp)">
+                                            @(_canManageEmployees ? "✏️ Edit Location" : "🔍 View Details")
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        }
+    </div>
+
+    <!-- ═══════════════════════════ DRAWER SYSTEM ══════════════════════════════ -->
+    <div class="drawer-overlay @(_isDrawerOpen ? "drawer-overlay--active" : "")" @onclick="CloseDrawer"></div>
+
+    <div class="drawer-content @(_isDrawerOpen ? "drawer-content--active" : "")">
+        <div class="drawer-header">
+            <h3 class="drawer-title">@(_canManageEmployees ? "Change Location" : "Employee Details")</h3>
+            <button class="btn-close-drawer" @onclick="CloseDrawer">&times;</button>
+        </div>
+
+        @if (_selectedEmployee is not null)
+        {
+            <div class="drawer-body">
+                <div class="drawer-emp-info">
+                    <div class="drawer-avatar">@GetInitials(_selectedEmployee.Name)</div>
+                    <div>
+                        <h4 class="drawer-emp-name">@_selectedEmployee.Name</h4>
+                        <span class="drawer-emp-user">@_selectedEmployee.Username</span>
+                    </div>
+                </div>
+
+                <div class="drawer-section">
+                    <span class="drawer-section__label">Current Organization Details</span>
+                    <div class="drawer-details-grid">
+                        <div class="detail-item">
+                            <span class="detail-label">Department</span>
+                            <span class="detail-val">@(_selectedEmployee.DepartmentName ?? "Unassigned")</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Location</span>
+                            <span class="detail-val">@(_selectedEmployee.LocationName ?? "Unassigned")</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="drawer-section">
+                    <label class="drawer-form-label" for="drawer-loc-select">Select New Location</label>
+                    <select class="drawer-select" id="drawer-loc-select" @bind="_newLocationId" disabled="@(!_canManageEmployees)">
+                        <option value="">— Unassigned (Remove location assignment) —</option>
+                        @foreach (var dept in _departments)
+                        {
+                            @if (dept.Locations.Count > 0)
+                            {
+                                <optgroup label="@dept.Name">
+                                    @foreach (var loc in dept.Locations)
+                                    {
+                                        <option value="@loc.Id">@loc.Name</option>
+                                    }
+                                </optgroup>
+                            }
+                        }
+                    </select>
+                    <p class="drawer-field-tip">Assigning the employee to a location allows them to be scheduled for shifts at that location.</p>
+                </div>
+            </div>
+
+            <div class="drawer-footer">
+                <button class="btn-drawer-cancel" @onclick="CloseDrawer" disabled="@_submitting">Cancel</button>
+                <button class="btn-drawer-save" @onclick="SaveLocationAsync" disabled="@(_submitting || !_canManageEmployees)">
+                    @if (_submitting)
+                    {
+                        <span class="sa-spinner"></span>
+                        <span>Saving…</span>
+                    }
+                    else
+                    {
+                        <span>💾 Save Changes</span>
+                    }
+                </button>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private enum LoadState { Idle, Loading, Success, Error }
+
+    private LoadState _employeesState = LoadState.Loading;
+    private LoadState _deptState = LoadState.Loading;
+    private string _errorMsg = "";
+
+    private IReadOnlyList<EmployeeWithDetailsDto> _employees = [];
+    private IReadOnlyList<DepartmentDto> _departments = [];
+
+    // Filters
+    private string _searchText = "";
+    private string _selectedDeptFilter = "";
+    private string _selectedLocFilter = "";
+
+    // Toast
+    private string _toastMessage = "";
+    private bool _toastSuccess = false;
+
+    // Drawer state
+    private bool _isDrawerOpen = false;
+    private EmployeeWithDetailsDto? _selectedEmployee;
+    private string _newLocationId = "";
+    private bool _submitting = false;
+
+    private bool _canManageEmployees = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        var authResult = await AuthorizationService.AuthorizeAsync(user, "Employee.Manage");
+        _canManageEmployees = authResult.Succeeded;
+
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        var empTask = GetEmployeesHandler.HandleAsync(new GetEmployeesWithDetailsQuery());
+        var deptTask = GetDepartmentsHandler.HandleAsync(new GetDepartmentsWithLocationsQuery());
+
+        await Task.WhenAll(empTask, deptTask);
+
+        var empResult = empTask.Result;
+        if (empResult.IsSuccess)
+        {
+            _employees = empResult.Value;
+            _employeesState = LoadState.Success;
+        }
+        else
+        {
+            _errorMsg = empResult.Error.Description;
+            _employeesState = LoadState.Error;
+        }
+
+        var deptResult = deptTask.Result;
+        if (deptResult.IsSuccess)
+        {
+            _departments = deptResult.Value;
+            _deptState = LoadState.Success;
+        }
+        else
+        {
+            if (_employeesState != LoadState.Error)
+            {
+                _errorMsg = deptResult.Error.Description;
+                _employeesState = LoadState.Error;
+            }
+            _deptState = LoadState.Error;
+        }
+    }
+
+    private IEnumerable<EmployeeWithDetailsDto> FilteredEmployees
+    {
+        get
+        {
+            var list = _employees.AsEnumerable();
+
+            if (!string.IsNullOrWhiteSpace(_searchText))
+            {
+                list = list.Where(e => e.Name.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ||
+                                       e.Username.Contains(_searchText, StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (!string.IsNullOrEmpty(_selectedDeptFilter) && Guid.TryParse(_selectedDeptFilter, out var deptId))
+            {
+                list = list.Where(e => e.DepartmentId == deptId);
+            }
+
+            if (!string.IsNullOrEmpty(_selectedLocFilter) && Guid.TryParse(_selectedLocFilter, out var locId))
+            {
+                list = list.Where(e => e.LocationId == locId);
+            }
+
+            return list;
+        }
+    }
+
+    private IEnumerable<LocationDto> AvailableLocationsForFilter
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(_selectedDeptFilter) || !Guid.TryParse(_selectedDeptFilter, out var deptId))
+            {
+                return _departments.SelectMany(d => d.Locations).OrderBy(l => l.Name);
+            }
+
+            var dept = _departments.FirstOrDefault(d => d.Id == deptId);
+            return dept?.Locations.OrderBy(l => l.Name) ?? Enumerable.Empty<LocationDto>();
+        }
+    }
+
+    private void OnDepartmentFilterChanged(ChangeEventArgs e)
+    {
+        _selectedDeptFilter = e.Value?.ToString() ?? "";
+        _selectedLocFilter = ""; // Reset location filter when department changes
+    }
+
+    private string GetInitials(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "?";
+
+        // Strip parenthesis (e.g. Alice Johnson (Main Office))
+        var pIdx = name.IndexOf('(');
+        if (pIdx >= 0)
+        {
+            name = name.Substring(0, pIdx).Trim();
+        }
+
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0) return "?";
+        if (parts.Length == 1) return parts[0][0].ToString().ToUpper();
+        return (parts[0][0].ToString() + parts[parts.Length - 1][0].ToString()).ToUpper();
+    }
+
+    private void OpenDrawer(EmployeeWithDetailsDto emp)
+    {
+        _selectedEmployee = emp;
+        _newLocationId = emp.LocationId?.ToString() ?? "";
+        _isDrawerOpen = true;
+    }
+
+    private void CloseDrawer()
+    {
+        _isDrawerOpen = false;
+        _selectedEmployee = null;
+        _newLocationId = "";
+    }
+
+    private async Task SaveLocationAsync()
+    {
+        if (_selectedEmployee is null) return;
+
+        _submitting = true;
+        StateHasChanged();
+
+        Guid? locationGuid = null;
+        if (!string.IsNullOrEmpty(_newLocationId) && Guid.TryParse(_newLocationId, out var locId))
+        {
+            locationGuid = locId;
+        }
+
+        var result = await UpdateLocationHandler.HandleAsync(new UpdateEmployeeLocationCommand(_selectedEmployee.Id, locationGuid));
+
+        _submitting = false;
+
+        if (result.IsSuccess)
+        {
+            ShowToast($"Successfully updated location for {_selectedEmployee.Name}.", true);
+            CloseDrawer();
+            await LoadDataAsync();
+        }
+        else
+        {
+            ShowToast($"Error: {result.Error.Description}", false);
+        }
+    }
+
+    private void ShowToast(string message, bool isSuccess)
+    {
+        _toastMessage = message;
+        _toastSuccess = isSuccess;
+        StateHasChanged();
+
+        _ = Task.Delay(5000).ContinueWith(_ =>
+        {
+            _toastMessage = "";
+            InvokeAsync(StateHasChanged);
+        });
+    }
+}

@@ -1,0 +1,119 @@
+.page[b-s0uj23fqjs] {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+}
+
+main[b-s0uj23fqjs] {
+    flex: 1;
+}
+
+.sidebar[b-s0uj23fqjs] {
+    background-image: linear-gradient(180deg, rgb(5, 39, 103) 0%, #3a0647 70%);
+}
+
+.top-row[b-s0uj23fqjs] {
+    background-color: #f7f7f7;
+    border-bottom: 1px solid #d6d5d5;
+    justify-content: flex-end;
+    height: 3.5rem;
+    display: flex;
+    align-items: center;
+}
+
+    .top-row[b-s0uj23fqjs]  a, .top-row[b-s0uj23fqjs]  .btn-link {
+        white-space: nowrap;
+        margin-left: 1.5rem;
+        text-decoration: none;
+    }
+
+    .top-row[b-s0uj23fqjs]  a:hover, .top-row[b-s0uj23fqjs]  .btn-link:hover {
+        text-decoration: underline;
+    }
+
+    .top-row[b-s0uj23fqjs]  a:first-child {
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+@media (max-width: 640.98px) {
+    .top-row[b-s0uj23fqjs] {
+        justify-content: space-between;
+    }
+
+    .top-row[b-s0uj23fqjs]  a, .top-row[b-s0uj23fqjs]  .btn-link {
+        margin-left: 0;
+    }
+}
+
+@media (min-width: 641px) {
+    .page[b-s0uj23fqjs] {
+        flex-direction: row;
+    }
+
+    .sidebar[b-s0uj23fqjs] {
+        width: 250px;
+        height: 100vh;
+        position: sticky;
+        top: 0;
+    }
+
+    .top-row[b-s0uj23fqjs] {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+    }
+
+    .top-row.auth[b-s0uj23fqjs]  a:first-child {
+        flex: 1;
+        text-align: right;
+        width: 0;
+    }
+
+    .top-row[b-s0uj23fqjs], article[b-s0uj23fqjs] {
+        padding-left: 2rem !important;
+        padding-right: 1.5rem !important;
+    }
+}
+
+#blazor-error-ui[b-s0uj23fqjs] {
+    color-scheme: light only;
+    background: lightyellow;
+    bottom: 0;
+    box-shadow: 0 -1px 2px rgba(0, 0, 0, 0.2);
+    box-sizing: border-box;
+    display: none;
+    left: 0;
+    padding: 0.6rem 1.25rem 0.7rem 1.25rem;
+    position: fixed;
+    width: 100%;
+    z-index: 1000;
+}
+
+    #blazor-error-ui .dismiss[b-s0uj23fqjs] {
+        cursor: pointer;
+        position: absolute;
+        right: 0.75rem;
+        top: 0.5rem;
+    }
+
+/* ── Dark theme Shell integration ────────────────────────────────────────── */
+main:has(.sa-container)[b-s0uj23fqjs], main:has(.dash-container)[b-s0uj23fqjs] {
+    background-color: #0d1117;
+    color: #e6edf3;
+}
+
+main:has(.sa-container) .top-row[b-s0uj23fqjs], main:has(.dash-container) .top-row[b-s0uj23fqjs] {
+    background-color: #161b22;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    color: #e6edf3;
+}
+
+main:has(.sa-container) .top-row[b-s0uj23fqjs]  a, main:has(.dash-container) .top-row[b-s0uj23fqjs]  a {
+    color: #638cff !important;
+}
+
+article:has(.sa-container)[b-s0uj23fqjs], article:has(.dash-container)[b-s0uj23fqjs] {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+}
