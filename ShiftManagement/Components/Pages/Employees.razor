@@ -370,7 +370,7 @@
         }
     }
 
-    private void OnDepartmentFilterChanged(ChangeEventArgs e)
+    private void OnDepartmentFilterChanged(Microsoft.AspNetCore.Components.ChangeEventArgs e)
     {
         _selectedDeptFilter = e.Value?.ToString() ?? "";
         _selectedLocFilter = ""; // Reset location filter when department changes

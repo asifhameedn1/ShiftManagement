@@ -1,0 +1,42 @@
+﻿@using Syncfusion.Blazor.Buttons
+@rendermode InteractiveServer
+<div class="drawer-container">
+    <!-- Trigger Button to Open Drawer -->
+    <SfButton Content="Open Drawer" OnClick="@ToggleDrawer" CssClass="e-primary" />
+
+    <!-- Syncfusion Sidebar Acting as a Drawer -->
+    <SfSidebar Width="300px" 
+               Type="@SidebarType.Over" 
+               Position="@SidebarPosition.Right" 
+               EnableShowBackdrop="true" 
+               @bind-IsOpen="@IsDrawerOpen">
+        <ChildContent>
+            <!-- Drawer Header -->
+            <div class="drawer-header">
+                <h3>Drawer Title</h3>
+                <SfButton IconCss="e-icons e-close" CssClass="e-flat" OnClick="@ToggleDrawer" />
+            </div>
+            
+            <!-- Drawer Body Content -->
+            <div class="drawer-body">
+                <p>Add your forms, menu links, navigation lists, or telemetry details here.</p>
+                <ul>
+                    <li><a href="#">Dashboard</a></li>
+                    <li><a href="#">Profile Settings</a></li>
+                    <li><a href="#">Logout</a></li>
+                </ul>
+            </div>
+        </ChildContent>
+    </SfSidebar>
+</div>
+
+@code {
+    [Parameter]
+    public bool IsDrawerOpen { get; set; } = false;
+
+    // Method to toggle state
+    private void ToggleDrawer()
+    {
+        IsDrawerOpen = !IsDrawerOpen;
+    }
+}

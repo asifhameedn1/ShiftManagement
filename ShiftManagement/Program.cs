@@ -1,10 +1,11 @@
-using Microsoft.AspNetCore.Authentication.Negotiate;
-using Microsoft.AspNetCore.Components.Authorization;
-using ShiftManagement.Auth;
-using ShiftManagement.Components;
 using Application;
 using Infrastructure;
+using Microsoft.AspNetCore.Authentication.Negotiate;
+using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.EntityFrameworkCore;
+using ShiftManagement.Auth;
+using ShiftManagement.Components;
+using Syncfusion.Blazor;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -26,7 +27,7 @@ builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddScoped<Application.Common.Interfaces.ICurrentUserService, ShiftManagement.Services.CurrentUserService>();
-
+builder.Services.AddSyncfusionBlazor();
 var app = builder.Build();
 
 // Apply any pending EF Core migrations / create the database on startup
