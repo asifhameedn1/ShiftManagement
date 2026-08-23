@@ -9,7 +9,8 @@
 @using Application.Features.Security.Commands.CreateRole
 @using Application.Features.Security.Commands.UpdateRole
 @using Application.Features.Security.Commands.DeleteRole
-@using Application.Features.Security.Commands.UpdateEmployeeRoles
+@using Application.Features.Security.Commands.UpdateEmployeeDepartmentRoles
+@using Application.Features.Departments.Queries.GetDepartmentsWithLocations
 @using Application.Common.Interfaces
 @using Domain.Common
 @using Microsoft.AspNetCore.Authorization
@@ -17,10 +18,11 @@
 @inject IHandler<GetRolesWithPermissionsQuery, Result<IReadOnlyList<RoleDto>>> GetRolesHandler
 @inject IHandler<GetPermissionsQuery, Result<IReadOnlyList<PermissionDto>>> GetPermissionsHandler
 @inject IHandler<GetEmployeesWithRolesQuery, Result<IReadOnlyList<EmployeeWithRolesDto>>> GetEmployeesHandler
+@inject IHandler<GetDepartmentsWithLocationsQuery, Result<IReadOnlyList<DepartmentDto>>> GetDepartmentsHandler
 @inject IHandler<CreateRoleCommand, Result> CreateRoleHandler
 @inject IHandler<UpdateRoleCommand, Result> UpdateRoleHandler
 @inject IHandler<DeleteRoleCommand, Result> DeleteRoleHandler
-@inject IHandler<UpdateEmployeeRolesCommand, Result> UpdateEmployeeRolesHandler
+@inject IHandler<UpdateEmployeeDepartmentRolesCommand, Result> UpdateEmployeeDepartmentRolesHandler
 
 <PageTitle>Roles & Permissions – ShiftManagement</PageTitle>
 <Treeview></Treeview>
@@ -217,17 +219,20 @@
                                         </td>
                                         <td>
                                             <div class="badge-container">
-                                                @if (emp.Roles.Count == 0)
+                                                @if (emp.DepartmentRoles.Count == 0)
                                                 {
                                                     <span class="badge-none">No Roles</span>
                                                 }
                                                 else
                                                 {
-                                                    @foreach (var role in emp.Roles.OrderBy(r => r.Name))
+                                                    @foreach (var deptRoles in emp.DepartmentRoles.OrderBy(d => d.DepartmentName))
                                                     {
-                                                        <span class="badge-role">
-                                                            @role.Name
-                                                        </span>
+                                                        @foreach (var role in deptRoles.Roles.OrderBy(r => r.Name))
+                                                        {
+                                                            <span class="badge-role">
+                                                                @deptRoles.DepartmentName: @role.Name
+                                                            </span>
+                                                        }
                                                     }
                                                 }
                                             </div>
@@ -325,7 +330,17 @@
                 </div>
 
                 <div class="drawer-form-group">
-                    <label class="drawer-form-label">Assigned Roles</label>
+                    <label class="drawer-form-label">Department</label>
+                    <select class="drawer-form-input" value="@_selectedDepartmentId" @onchange="OnDepartmentChanged">
+                        @foreach (var dept in _departments)
+                        {
+                            <option value="@dept.Id">@dept.Name</option>
+                        }
+                    </select>
+                </div>
+
+                <div class="drawer-form-group">
+                    <label class="drawer-form-label">Assigned Roles in @(_departments.FirstOrDefault(d => d.Id == _selectedDepartmentId)?.Name ?? "selected department")</label>
                     <div class="permissions-checklist">
                         @foreach (var role in _roles)
                         {
@@ -389,6 +404,7 @@
     private IReadOnlyList<RoleDto> _roles = [];
     private IReadOnlyList<PermissionDto> _permissions = [];
     private IReadOnlyList<EmployeeWithRolesDto> _employees = [];
+    private IReadOnlyList<DepartmentDto> _departments = [];
 
     // Search filters
     private string _searchRoleText = "";
@@ -410,6 +426,7 @@
     // Drawer state - Employee
     private bool _isEmpDrawerOpen = false;
     private EmployeeWithRolesDto? _selectedEmp = null;
+    private Guid _selectedDepartmentId = Guid.Empty;
     private List<Guid> _empFormRoleIds = [];
 
     protected override async Task OnInitializedAsync()
@@ -430,23 +447,26 @@
         var rolesTask = GetRolesHandler.HandleAsync(new GetRolesWithPermissionsQuery());
         var permsTask = GetPermissionsHandler.HandleAsync(new GetPermissionsQuery());
         var empsTask = GetEmployeesHandler.HandleAsync(new GetEmployeesWithRolesQuery());
+        var deptsTask = GetDepartmentsHandler.HandleAsync(new GetDepartmentsWithLocationsQuery());
 
-        await Task.WhenAll(rolesTask, permsTask, empsTask);
+        await Task.WhenAll(rolesTask, permsTask, empsTask, deptsTask);
 
         var rolesRes = rolesTask.Result;
         var permsRes = permsTask.Result;
         var empsRes = empsTask.Result;
+        var deptsRes = deptsTask.Result;
 
-        if (rolesRes.IsSuccess && permsRes.IsSuccess && empsRes.IsSuccess)
+        if (rolesRes.IsSuccess && permsRes.IsSuccess && empsRes.IsSuccess && deptsRes.IsSuccess)
         {
             _roles = rolesRes.Value;
             _permissions = permsRes.Value;
             _employees = empsRes.Value;
+            _departments = deptsRes.Value;
             _loadState = LoadState.Success;
         }
         else
         {
-            _errorMsg = rolesRes.Error.Description ?? permsRes.Error.Description ?? empsRes.Error.Description ?? "Failed to load security settings.";
+            _errorMsg = rolesRes.Error.Description ?? permsRes.Error.Description ?? empsRes.Error.Description ?? deptsRes.Error.Description ?? "Failed to load security settings.";
             _loadState = LoadState.Error;
         }
     }
@@ -595,7 +615,10 @@
     private void OpenEditEmpRolesDrawer(EmployeeWithRolesDto emp)
     {
         _selectedEmp = emp;
-        _empFormRoleIds = emp.Roles.Select(r => r.Id).ToList();
+        _selectedDepartmentId = emp.DepartmentRoles.FirstOrDefault()?.DepartmentId
+            ?? _departments.FirstOrDefault()?.Id
+            ?? Guid.Empty;
+        _empFormRoleIds = RoleIdsForSelectedDepartment();
         _isEmpDrawerOpen = true;
     }
 
@@ -603,7 +626,28 @@
     {
         _isEmpDrawerOpen = false;
         _selectedEmp = null;
+        _selectedDepartmentId = Guid.Empty;
         _empFormRoleIds = [];
+    }
+
+    private List<Guid> RoleIdsForSelectedDepartment()
+    {
+        if (_selectedEmp is null) return [];
+
+        return _selectedEmp.DepartmentRoles
+            .Where(d => d.DepartmentId == _selectedDepartmentId)
+            .SelectMany(d => d.Roles)
+            .Select(r => r.Id)
+            .ToList();
+    }
+
+    private void OnDepartmentChanged(Microsoft.AspNetCore.Components.ChangeEventArgs e)
+    {
+        if (Guid.TryParse(e.Value?.ToString(), out var departmentId))
+        {
+            _selectedDepartmentId = departmentId;
+            _empFormRoleIds = RoleIdsForSelectedDepartment();
+        }
     }
 
     private void ToggleRole(Guid roleId, object? checkedValue)
@@ -622,12 +666,12 @@
 
     private async Task SaveEmpRolesAsync()
     {
-        if (_selectedEmp == null) return;
+        if (_selectedEmp == null || _selectedDepartmentId == Guid.Empty) return;
 
         _submitting = true;
         StateHasChanged();
 
-        var result = await UpdateEmployeeRolesHandler.HandleAsync(new UpdateEmployeeRolesCommand(_selectedEmp.Id, _empFormRoleIds));
+        var result = await UpdateEmployeeDepartmentRolesHandler.HandleAsync(new UpdateEmployeeDepartmentRolesCommand(_selectedEmp.Id, _selectedDepartmentId, _empFormRoleIds));
 
         _submitting = false;
 

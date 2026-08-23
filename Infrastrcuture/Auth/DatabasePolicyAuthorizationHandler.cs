@@ -7,10 +7,12 @@ namespace Infrastructure.Auth;
 public sealed class DatabasePolicyAuthorizationHandler : AuthorizationHandler<DatabasePolicyRequirement>
 {
     private readonly IApplicationDbContext _context;
+    private readonly IPermissionService _permissionService;
 
-    public DatabasePolicyAuthorizationHandler(IApplicationDbContext context)
+    public DatabasePolicyAuthorizationHandler(IApplicationDbContext context, IPermissionService permissionService)
     {
         _context = context;
+        _permissionService = permissionService;
     }
 
     protected override async Task HandleRequirementAsync(
@@ -34,54 +36,31 @@ public sealed class DatabasePolicyAuthorizationHandler : AuthorizationHandler<Da
             username = username[(username.LastIndexOf('\\') + 1)..];
         }
 
-        // Fetch employee with their roles and permissions from the DB (no AsNoTracking, as we might write to it)
+        // Fetch employee from the DB (no AsNoTracking, as we might write to it)
         var employee = await _context.Employees
-            .Include(e => e.Roles)
-                .ThenInclude(r => r.Permissions)
             .FirstOrDefaultAsync(e => e.Username == username);
 
-        // If the employee doesn't exist, register them and assign the "Employee" role
+        // If the employee doesn't exist, register them. They start with no department
+        // memberships/roles and must be explicitly granted access by an admin.
         if (employee is null)
         {
             var rawName = context.User.Identity.Name ?? username;
             var displayName = rawName.Contains('\\') ? rawName[(rawName.LastIndexOf('\\') + 1)..] : rawName;
-            
+
             employee = Domain.Entities.Employee.Create(displayName, username);
-            
-            var employeeRole = await _context.Roles
-                .Include(r => r.Permissions)
-                .FirstOrDefaultAsync(r => r.Name == "Employee");
-                
-            if (employeeRole is not null)
-            {
-                employee.AddRole(employeeRole);
-            }
-            
+
             _context.Employees.Add(employee);
             await _context.SaveChangesAsync();
+            return;
         }
-        else if (!employee.IsActive)
+
+        if (!employee.IsActive)
         {
             return;
         }
-        else if (!employee.Roles.Any())
-        {
-            // If the employee exists but has no roles assigned, automatically assign the "Employee" role
-            var employeeRole = await _context.Roles
-                .Include(r => r.Permissions)
-                .FirstOrDefaultAsync(r => r.Name == "Employee");
-                
-            if (employeeRole is not null)
-            {
-                employee.AddRole(employeeRole);
-                await _context.SaveChangesAsync();
-            }
-        }
 
-        // Check if the user has the required permission
-        var hasPermission = employee.Roles
-            .SelectMany(r => r.Permissions)
-            .Any(p => p.Name.Equals(requirement.PermissionName, StringComparison.OrdinalIgnoreCase));
+        // Check if the user has the required permission in any department
+        var hasPermission = await _permissionService.HasPermissionAsync(username, requirement.PermissionName);
 
         if (hasPermission)
         {

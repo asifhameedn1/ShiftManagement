@@ -24,8 +24,11 @@ public sealed class Employee
     public IReadOnlyCollection<Shift> Shifts => _shifts.AsReadOnly();
     private readonly List<Shift> _shifts = [];
 
-    public IReadOnlyCollection<Role> Roles => _roles.AsReadOnly();
-    private readonly List<Role> _roles = [];
+    public IReadOnlyCollection<Department> Departments => _departments.AsReadOnly();
+    private readonly List<Department> _departments = [];
+
+    public IReadOnlyCollection<EmployeeDepartmentRole> DepartmentRoles => _departmentRoles.AsReadOnly();
+    private readonly List<EmployeeDepartmentRole> _departmentRoles = [];
 
     public static Employee Create(string name, string username, Guid? locationId = null)
     {
@@ -49,20 +52,34 @@ public sealed class Employee
     public void Deactivate() => IsActive = false;
     public void Activate() => IsActive = true;
 
-    public void AddRole(Role role)
+    public void AssignRole(Department department, Role role)
     {
-        if (!_roles.Any(r => r.Id == role.Id))
+        if (!_departments.Any(d => d.Id == department.Id))
         {
-            _roles.Add(role);
+            _departments.Add(department);
+        }
+
+        if (!_departmentRoles.Any(dr => dr.DepartmentId == department.Id && dr.RoleId == role.Id))
+        {
+            _departmentRoles.Add(EmployeeDepartmentRole.Create(Id, department.Id, role.Id));
         }
     }
 
-    public void RemoveRole(Role role)
+    public void RemoveRole(Guid departmentId, Guid roleId)
     {
-        var existing = _roles.FirstOrDefault(r => r.Id == role.Id);
+        var existing = _departmentRoles.FirstOrDefault(dr => dr.DepartmentId == departmentId && dr.RoleId == roleId);
         if (existing is not null)
         {
-            _roles.Remove(existing);
+            _departmentRoles.Remove(existing);
+        }
+
+        if (!_departmentRoles.Any(dr => dr.DepartmentId == departmentId))
+        {
+            var department = _departments.FirstOrDefault(d => d.Id == departmentId);
+            if (department is not null)
+            {
+                _departments.Remove(department);
+            }
         }
     }
 

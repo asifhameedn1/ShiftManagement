@@ -18,6 +18,7 @@ public sealed class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<Location> Locations => Set<Location>();
     public DbSet<Role> Roles => Set<Role>();
     public DbSet<Permission> Permissions => Set<Permission>();
+    public DbSet<EmployeeDepartmentRole> EmployeeDepartmentRoles => Set<EmployeeDepartmentRole>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

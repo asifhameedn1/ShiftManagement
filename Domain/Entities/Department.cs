@@ -12,6 +12,9 @@ public sealed class Department
     public IReadOnlyCollection<Location> Locations => _locations.AsReadOnly();
     private readonly List<Location> _locations = [];
 
+    public IReadOnlyCollection<Employee> Employees => _employees.AsReadOnly();
+    private readonly List<Employee> _employees = [];
+
     public static Department Create(string name)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);

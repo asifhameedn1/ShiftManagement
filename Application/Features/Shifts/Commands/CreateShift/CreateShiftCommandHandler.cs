@@ -10,11 +10,13 @@ public sealed class CreateShiftCommandHandler
 {
     private readonly IApplicationDbContext _context;
     private readonly ICurrentUserService _currentUserService;
+    private readonly IPermissionService _permissionService;
 
-    public CreateShiftCommandHandler(IApplicationDbContext context, ICurrentUserService currentUserService)
+    public CreateShiftCommandHandler(IApplicationDbContext context, ICurrentUserService currentUserService, IPermissionService permissionService)
     {
         _context = context;
         _currentUserService = currentUserService;
+        _permissionService = permissionService;
     }
 
     public async Task<Result<Guid>> HandleAsync(
@@ -28,11 +30,7 @@ public sealed class CreateShiftCommandHandler
             return Result.Failure<Guid>(new Error("Security.Unauthenticated", "User is not authenticated."));
         }
 
-        var isAuthorized = await _context.Employees
-            .Where(e => e.Username == currentUsername && e.IsActive)
-            .SelectMany(e => e.Roles)
-            .SelectMany(r => r.Permissions)
-            .AnyAsync(p => p.Name == "Shift.Manage", cancellationToken);
+        var isAuthorized = await _permissionService.HasPermissionAsync(currentUsername, "Shift.Manage", cancellationToken: cancellationToken);
 
         if (!isAuthorized)
         {

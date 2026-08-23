@@ -9,11 +9,13 @@ public sealed class GetEmployeesWithDetailsQueryHandler
 {
     private readonly IApplicationDbContext _context;
     private readonly ICurrentUserService _currentUserService;
+    private readonly IPermissionService _permissionService;
 
-    public GetEmployeesWithDetailsQueryHandler(IApplicationDbContext context, ICurrentUserService currentUserService)
+    public GetEmployeesWithDetailsQueryHandler(IApplicationDbContext context, ICurrentUserService currentUserService, IPermissionService permissionService)
     {
         _context = context;
         _currentUserService = currentUserService;
+        _permissionService = permissionService;
     }
 
     public async Task<Result<IReadOnlyList<EmployeeWithDetailsDto>>> HandleAsync(
@@ -27,11 +29,7 @@ public sealed class GetEmployeesWithDetailsQueryHandler
             return Result.Failure<IReadOnlyList<EmployeeWithDetailsDto>>(new Error("Security.Unauthenticated", "User is not authenticated."));
         }
 
-        var isAuthorized = await _context.Employees
-            .Where(e => e.Username == currentUsername && e.IsActive)
-            .SelectMany(e => e.Roles)
-            .SelectMany(r => r.Permissions)
-            .AnyAsync(p => p.Name == "Employee.View", cancellationToken);
+        var isAuthorized = await _permissionService.HasPermissionAsync(currentUsername, "Employee.View", cancellationToken: cancellationToken);
 
         if (!isAuthorized)
         {

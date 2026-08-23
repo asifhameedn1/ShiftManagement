@@ -12,11 +12,13 @@ public sealed class DeleteRoleCommandHandler : IHandler<DeleteRoleCommand, Resul
 {
     private readonly IApplicationDbContext _context;
     private readonly ICurrentUserService _currentUserService;
+    private readonly IPermissionService _permissionService;
 
-    public DeleteRoleCommandHandler(IApplicationDbContext context, ICurrentUserService currentUserService)
+    public DeleteRoleCommandHandler(IApplicationDbContext context, ICurrentUserService currentUserService, IPermissionService permissionService)
     {
         _context = context;
         _currentUserService = currentUserService;
+        _permissionService = permissionService;
     }
 
     public async Task<Result> HandleAsync(DeleteRoleCommand request, CancellationToken cancellationToken = default)
@@ -27,11 +29,7 @@ public sealed class DeleteRoleCommandHandler : IHandler<DeleteRoleCommand, Resul
             return Result.Failure(new Error("Security.Unauthenticated", "User is not authenticated."));
         }
 
-        var isAuthorized = await _context.Employees
-            .Where(e => e.Username == currentUsername && e.IsActive)
-            .SelectMany(e => e.Roles)
-            .SelectMany(r => r.Permissions)
-            .AnyAsync(p => p.Name == "Role.Manage", cancellationToken);
+        var isAuthorized = await _permissionService.HasPermissionAsync(currentUsername, "Role.Manage", cancellationToken: cancellationToken);
 
         if (!isAuthorized)
         {
@@ -51,8 +49,8 @@ public sealed class DeleteRoleCommandHandler : IHandler<DeleteRoleCommand, Resul
             return Result.Failure(new Error("Role.System", "System default roles (Admin, Manager, Employee) cannot be deleted."));
         }
 
-        var hasEmployees = await _context.Employees
-            .AnyAsync(e => e.Roles.Any(r => r.Id == request.Id), cancellationToken);
+        var hasEmployees = await _context.EmployeeDepartmentRoles
+            .AnyAsync(edr => edr.RoleId == request.Id, cancellationToken);
 
         if (hasEmployees)
         {

@@ -27,8 +27,10 @@ public static class DependencyInjection
             provider => provider.GetRequiredService<ApplicationDbContext>());
 
         // Register custom dynamic authorization services
+        services.AddScoped<IPermissionService, Infrastructure.Auth.PermissionService>();
         services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationPolicyProvider, Infrastructure.Auth.DatabasePolicyProvider>();
         services.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, Infrastructure.Auth.DatabasePolicyAuthorizationHandler>();
+        services.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, Infrastructure.Auth.DatabasePolicyDepartmentAuthorizationHandler>();
 
         return services;
     }

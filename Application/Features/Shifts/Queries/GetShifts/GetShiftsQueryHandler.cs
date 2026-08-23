@@ -9,11 +9,13 @@ public sealed class GetShiftsQueryHandler
 {
     private readonly IApplicationDbContext _context;
     private readonly ICurrentUserService _currentUserService;
+    private readonly IPermissionService _permissionService;
 
-    public GetShiftsQueryHandler(IApplicationDbContext context, ICurrentUserService currentUserService)
+    public GetShiftsQueryHandler(IApplicationDbContext context, ICurrentUserService currentUserService, IPermissionService permissionService)
     {
         _context = context;
         _currentUserService = currentUserService;
+        _permissionService = permissionService;
     }
 
     public async Task<Result<IReadOnlyList<ShiftDto>>> HandleAsync(
@@ -27,11 +29,7 @@ public sealed class GetShiftsQueryHandler
             return Result.Failure<IReadOnlyList<ShiftDto>>(new Error("Security.Unauthenticated", "User is not authenticated."));
         }
 
-        var isAuthorized = await _context.Employees
-            .Where(e => e.Username == currentUsername && e.IsActive)
-            .SelectMany(e => e.Roles)
-            .SelectMany(r => r.Permissions)
-            .AnyAsync(p => p.Name == "Shift.View", cancellationToken);
+        var isAuthorized = await _permissionService.HasPermissionAsync(currentUsername, "Shift.View", cancellationToken: cancellationToken);
 
         if (!isAuthorized)
         {

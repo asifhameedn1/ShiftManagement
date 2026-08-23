@@ -9,11 +9,13 @@ public sealed class UpdateEmployeeLocationCommandHandler
 {
     private readonly IApplicationDbContext _context;
     private readonly ICurrentUserService _currentUserService;
+    private readonly IPermissionService _permissionService;
 
-    public UpdateEmployeeLocationCommandHandler(IApplicationDbContext context, ICurrentUserService currentUserService)
+    public UpdateEmployeeLocationCommandHandler(IApplicationDbContext context, ICurrentUserService currentUserService, IPermissionService permissionService)
     {
         _context = context;
         _currentUserService = currentUserService;
+        _permissionService = permissionService;
     }
 
     public async Task<Result> HandleAsync(
@@ -27,11 +29,7 @@ public sealed class UpdateEmployeeLocationCommandHandler
             return Result.Failure(new Error("Security.Unauthenticated", "User is not authenticated."));
         }
 
-        var isAuthorized = await _context.Employees
-            .Where(e => e.Username == currentUsername && e.IsActive)
-            .SelectMany(e => e.Roles)
-            .SelectMany(r => r.Permissions)
-            .AnyAsync(p => p.Name == "Employee.Manage", cancellationToken);
+        var isAuthorized = await _permissionService.HasPermissionAsync(currentUsername, "Employee.Manage", cancellationToken: cancellationToken);
 
         if (!isAuthorized)
         {

@@ -10,9 +10,6 @@ public sealed class Role
     public IReadOnlyCollection<Permission> Permissions => _permissions.AsReadOnly();
     private readonly List<Permission> _permissions = [];
 
-    public IReadOnlyCollection<Employee> Employees => _employees.AsReadOnly();
-    private readonly List<Employee> _employees = [];
-
     public static Role Create(string name)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);

@@ -14,11 +14,13 @@ public sealed class GetEmployeesWithRolesQueryHandler
 {
     private readonly IApplicationDbContext _context;
     private readonly ICurrentUserService _currentUserService;
+    private readonly IPermissionService _permissionService;
 
-    public GetEmployeesWithRolesQueryHandler(IApplicationDbContext context, ICurrentUserService currentUserService)
+    public GetEmployeesWithRolesQueryHandler(IApplicationDbContext context, ICurrentUserService currentUserService, IPermissionService permissionService)
     {
         _context = context;
         _currentUserService = currentUserService;
+        _permissionService = permissionService;
     }
 
     public async Task<Result<IReadOnlyList<EmployeeWithRolesDto>>> HandleAsync(
@@ -31,34 +33,44 @@ public sealed class GetEmployeesWithRolesQueryHandler
             return Result.Failure<IReadOnlyList<EmployeeWithRolesDto>>(new Error("Security.Unauthenticated", "User is not authenticated."));
         }
 
-        var isAuthorized = await _context.Employees
-            .Where(e => e.Username == currentUsername && e.IsActive)
-            .SelectMany(e => e.Roles)
-            .SelectMany(r => r.Permissions)
-            .AnyAsync(p => p.Name == "Role.Manage", cancellationToken);
+        var isAuthorized = await _permissionService.HasPermissionAsync(currentUsername, "Role.Manage", cancellationToken: cancellationToken);
 
         if (!isAuthorized)
         {
             return Result.Failure<IReadOnlyList<EmployeeWithRolesDto>>(new Error("Security.Unauthorized", "You do not have permission to manage roles and permissions."));
         }
 
-        var employees = await _context.Employees
+        var employeesRaw = await _context.Employees
             .AsNoTracking()
-            .Include(e => e.Roles)
-                .ThenInclude(r => r.Permissions)
+            .Include(e => e.DepartmentRoles)
+                .ThenInclude(dr => dr.Department)
+            .Include(e => e.DepartmentRoles)
+                .ThenInclude(dr => dr.Role)
+                    .ThenInclude(r => r.Permissions)
             .Where(e => e.IsActive)
             .OrderBy(e => e.Name)
+            .ToListAsync(cancellationToken);
+
+        // Grouped in memory (not translated to SQL) to keep the nested projection simple.
+        var employees = employeesRaw
             .Select(e => new EmployeeWithRolesDto(
                 e.Id,
                 e.Name,
                 e.Username,
-                e.Roles.Select(r => new RoleDto(
-                    r.Id,
-                    r.Name,
-                    r.Permissions.Select(p => new PermissionDto(p.Id, p.Name)).ToList()
-                )).ToList()
+                e.DepartmentRoles
+                    .GroupBy(dr => dr.Department)
+                    .Select(g => new DepartmentRoleAssignmentDto(
+                        g.Key.Id,
+                        g.Key.Name,
+                        g.Select(dr => new RoleDto(
+                            dr.Role.Id,
+                            dr.Role.Name,
+                            dr.Role.Permissions.Select(p => new PermissionDto(p.Id, p.Name)).ToList()
+                        )).ToList()
+                    ))
+                    .ToList()
             ))
-            .ToListAsync(cancellationToken);
+            .ToList();
 
         return Result.Success<IReadOnlyList<EmployeeWithRolesDto>>(employees);
     }

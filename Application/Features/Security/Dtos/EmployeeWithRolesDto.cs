@@ -6,4 +6,4 @@ public sealed record EmployeeWithRolesDto(
     Guid Id,
     string Name,
     string Username,
-    IReadOnlyList<RoleDto> Roles);
+    IReadOnlyList<DepartmentRoleAssignmentDto> DepartmentRoles);

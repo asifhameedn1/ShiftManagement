@@ -14,11 +14,13 @@ public sealed class GetRolesWithPermissionsQueryHandler
 {
     private readonly IApplicationDbContext _context;
     private readonly ICurrentUserService _currentUserService;
+    private readonly IPermissionService _permissionService;
 
-    public GetRolesWithPermissionsQueryHandler(IApplicationDbContext context, ICurrentUserService currentUserService)
+    public GetRolesWithPermissionsQueryHandler(IApplicationDbContext context, ICurrentUserService currentUserService, IPermissionService permissionService)
     {
         _context = context;
         _currentUserService = currentUserService;
+        _permissionService = permissionService;
     }
 
     public async Task<Result<IReadOnlyList<RoleDto>>> HandleAsync(
@@ -31,11 +33,7 @@ public sealed class GetRolesWithPermissionsQueryHandler
             return Result.Failure<IReadOnlyList<RoleDto>>(new Error("Security.Unauthenticated", "User is not authenticated."));
         }
 
-        var isAuthorized = await _context.Employees
-            .Where(e => e.Username == currentUsername && e.IsActive)
-            .SelectMany(e => e.Roles)
-            .SelectMany(r => r.Permissions)
-            .AnyAsync(p => p.Name == "Role.Manage", cancellationToken);
+        var isAuthorized = await _permissionService.HasPermissionAsync(currentUsername, "Role.Manage", cancellationToken: cancellationToken);
 
         if (!isAuthorized)
         {

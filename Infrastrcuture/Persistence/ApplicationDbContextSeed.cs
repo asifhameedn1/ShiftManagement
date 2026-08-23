@@ -11,6 +11,10 @@ public static class ApplicationDbContextSeed
 {
     public static async Task SeedAsync(ApplicationDbContext db)
     {
+        // Populated while seeding departments/locations/employees below; used to assign each
+        // seeded employee's initial role directly in the department they were created under.
+        var employeeDepartments = new List<(Employee Employee, Department Department)>();
+
         // ── Seed reference data (runs only when the DB is empty) ──────────────
         if (!await db.Departments.AnyAsync())
         {
@@ -51,6 +55,7 @@ public static class ApplicationDbContextSeed
                             $"{eUser}.{locName.ToLower().Replace(" ", "")}{empIdx}",
                             loc.Id);
                         db.Employees.Add(emp);
+                        employeeDepartments.Add((emp, dept));
                         empIdx++;
                     }
                 }
@@ -90,21 +95,20 @@ public static class ApplicationDbContextSeed
             db.Roles.AddRange(adminRole, managerRole, employeeRole);
             await db.SaveChangesAsync(); // Save roles and permissions first so they are tracked
 
-            // 3. Assign roles to existing employees
-            var allEmployees = await db.Employees.ToListAsync();
-            foreach (var emp in allEmployees)
+            // 3. Assign roles to seeded employees, scoped to the department each was created under
+            foreach (var (emp, dept) in employeeDepartments)
             {
                 if (emp.Username.StartsWith("alice.johnson"))
                 {
-                    emp.AddRole(adminRole);
+                    emp.AssignRole(dept, adminRole);
                 }
                 else if (emp.Username.StartsWith("bob.smith"))
                 {
-                    emp.AddRole(managerRole);
+                    emp.AssignRole(dept, managerRole);
                 }
                 else
                 {
-                    emp.AddRole(employeeRole);
+                    emp.AssignRole(dept, employeeRole);
                 }
             }
             await db.SaveChangesAsync();
@@ -132,9 +136,14 @@ public static class ApplicationDbContextSeed
         var dbAdminRole = await db.Roles.FirstOrDefaultAsync(r => r.Name == "Admin");
         if (dbAdminRole != null)
         {
+            var allDepartments = await db.Departments.ToListAsync();
+
             foreach (var adminUsername in adminUsernames.Distinct(StringComparer.OrdinalIgnoreCase))
             {
-                var devEmp = await db.Employees.Include(e => e.Roles).FirstOrDefaultAsync(e => e.Username == adminUsername);
+                var devEmp = await db.Employees
+                    .Include(e => e.DepartmentRoles)
+                        .ThenInclude(dr => dr.Role)
+                    .FirstOrDefaultAsync(e => e.Username == adminUsername);
                 if (devEmp is null)
                 {
                     devEmp = Employee.Create($"Local Developer ({adminUsername})", adminUsername);
@@ -142,11 +151,15 @@ public static class ApplicationDbContextSeed
                     await db.SaveChangesAsync();
                 }
 
-                if (!devEmp.Roles.Any(r => r.Name == "Admin"))
+                // Grant Admin in every department for full local-debugging access
+                foreach (var dept in allDepartments)
                 {
-                    devEmp.AddRole(dbAdminRole);
-                    await db.SaveChangesAsync();
+                    if (!devEmp.DepartmentRoles.Any(dr => dr.DepartmentId == dept.Id && dr.Role.Name == "Admin"))
+                    {
+                        devEmp.AssignRole(dept, dbAdminRole);
+                    }
                 }
+                await db.SaveChangesAsync();
             }
         }
     }
