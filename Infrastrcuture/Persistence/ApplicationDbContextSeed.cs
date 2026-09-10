@@ -15,6 +15,19 @@ public static class ApplicationDbContextSeed
         // seeded employee's initial role directly in the department they were created under.
         var employeeDepartments = new List<(Employee Employee, Department Department)>();
 
+        // AssignRole returns the newly created join entity (or null if it already existed) so it
+        // can be explicitly tracked as Added — without this, EF's graph fix-up can mistake a new
+        // entity with a client-generated key for an existing row when the Employee is already
+        // tracked as Unchanged, producing a failing UPDATE instead of an INSERT.
+        void AssignRole(Employee employee, Department department, Role role)
+        {
+            var departmentRole = employee.AssignRole(department, role);
+            if (departmentRole is not null)
+            {
+                db.EmployeeDepartmentRoles.Add(departmentRole);
+            }
+        }
+
         // ── Seed reference data (runs only when the DB is empty) ──────────────
         if (!await db.Departments.AnyAsync())
         {
@@ -100,15 +113,15 @@ public static class ApplicationDbContextSeed
             {
                 if (emp.Username.StartsWith("alice.johnson"))
                 {
-                    emp.AssignRole(dept, adminRole);
+                    AssignRole(emp, dept, adminRole);
                 }
                 else if (emp.Username.StartsWith("bob.smith"))
                 {
-                    emp.AssignRole(dept, managerRole);
+                    AssignRole(emp, dept, managerRole);
                 }
                 else
                 {
-                    emp.AssignRole(dept, employeeRole);
+                    AssignRole(emp, dept, employeeRole);
                 }
             }
             await db.SaveChangesAsync();
@@ -156,7 +169,7 @@ public static class ApplicationDbContextSeed
                 {
                     if (!devEmp.DepartmentRoles.Any(dr => dr.DepartmentId == dept.Id && dr.Role.Name == "Admin"))
                     {
-                        devEmp.AssignRole(dept, dbAdminRole);
+                        AssignRole(devEmp, dept, dbAdminRole);
                     }
                 }
                 await db.SaveChangesAsync();

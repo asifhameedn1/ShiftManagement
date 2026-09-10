@@ -70,7 +70,15 @@ public sealed class UpdateEmployeeDepartmentRolesCommandHandler : IHandler<Updat
 
         foreach (var role in targetRoles)
         {
-            employee.AssignRole(department, role);
+            // AssignRole returns the newly created join entity so it can be explicitly tracked as
+            // Added — without this, EF's graph fix-up mistakes a new entity with a client-generated
+            // key for an existing row (since `employee` is already tracked as Unchanged), producing
+            // a failing UPDATE instead of an INSERT.
+            var departmentRole = employee.AssignRole(department, role);
+            if (departmentRole is not null)
+            {
+                _context.EmployeeDepartmentRoles.Add(departmentRole);
+            }
         }
 
         await _context.SaveChangesAsync(cancellationToken);

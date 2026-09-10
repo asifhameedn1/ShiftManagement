@@ -20,7 +20,6 @@ builder.Services.AddAuthorization();
 // Persist the Windows identity captured during SSR into the interactive Blazor circuit.
 // This prevents a blank page caused by Windows Auth not re-negotiating over WebSocket.
 builder.Services.AddScoped<AuthenticationStateProvider, PersistingAuthenticationStateProvider>();
-builder.Services.AddScoped<PersistentAuthenticationStateProvider>();
 builder.Services.AddCascadingAuthenticationState();
 
 // Clean Architecture layers
@@ -45,11 +44,12 @@ if (!app.Environment.IsDevelopment())
     // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
     app.UseHsts();
 }
-app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
 app.UseHttpsRedirection();
 
 app.UseAuthentication();
 app.UseAuthorization();
+
+app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
 
 app.UseAntiforgery();
 app.MapStaticAssets();

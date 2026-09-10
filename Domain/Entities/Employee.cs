@@ -52,17 +52,28 @@ public sealed class Employee
     public void Deactivate() => IsActive = false;
     public void Activate() => IsActive = true;
 
-    public void AssignRole(Department department, Role role)
+    /// <summary>
+    /// Assigns the role, scoped to the department. Returns the newly created join entity so
+    /// callers can explicitly track it as Added — EF Core's graph fix-up otherwise mistakes a
+    /// new entity with a client-generated key for an existing row when the Employee is already
+    /// tracked as Unchanged, producing a failing UPDATE instead of an INSERT. Returns null if the
+    /// employee already had this role in this department.
+    /// </summary>
+    public EmployeeDepartmentRole? AssignRole(Department department, Role role)
     {
         if (!_departments.Any(d => d.Id == department.Id))
         {
             _departments.Add(department);
         }
 
-        if (!_departmentRoles.Any(dr => dr.DepartmentId == department.Id && dr.RoleId == role.Id))
+        if (_departmentRoles.Any(dr => dr.DepartmentId == department.Id && dr.RoleId == role.Id))
         {
-            _departmentRoles.Add(EmployeeDepartmentRole.Create(Id, department.Id, role.Id));
+            return null;
         }
+
+        var departmentRole = EmployeeDepartmentRole.Create(Id, department.Id, role.Id);
+        _departmentRoles.Add(departmentRole);
+        return departmentRole;
     }
 
     public void RemoveRole(Guid departmentId, Guid roleId)
