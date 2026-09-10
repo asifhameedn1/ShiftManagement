@@ -59,12 +59,14 @@ public sealed class DatabasePolicyAuthorizationHandler : AuthorizationHandler<Da
             return;
         }
 
-        // Check if the user has the required permission in any department
-        var hasPermission = await _permissionService.HasPermissionAsync(username, requirement.PermissionName);
-
-        if (hasPermission)
+        // Check if the user has any one of the required permissions, in any department
+        foreach (var permissionName in requirement.PermissionNames)
         {
-            context.Succeed(requirement);
+            if (await _permissionService.HasPermissionAsync(username, permissionName))
+            {
+                context.Succeed(requirement);
+                return;
+            }
         }
     }
 }

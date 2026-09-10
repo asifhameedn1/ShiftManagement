@@ -29,7 +29,8 @@ public sealed class GetEmployeesWithDetailsQueryHandler
             return Result.Failure<IReadOnlyList<EmployeeWithDetailsDto>>(new Error("Security.Unauthenticated", "User is not authenticated."));
         }
 
-        var isAuthorized = await _permissionService.HasPermissionAsync(currentUsername, "Employee.View", cancellationToken: cancellationToken);
+        var isAuthorized = await _permissionService.HasPermissionAsync(currentUsername, "Employee.View", cancellationToken: cancellationToken)
+            || await _permissionService.HasPermissionAsync(currentUsername, "Employee.Manage", cancellationToken: cancellationToken);
 
         if (!isAuthorized)
         {

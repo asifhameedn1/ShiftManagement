@@ -1,5 +1,5 @@
 @page "/employees"
-@attribute [Authorize(Policy = "Employee.View")]
+@attribute [Authorize(Policy = "Employee.View,Employee.Manage")]
 @rendermode InteractiveServer
 
 @using Application.Features.Employees.Queries.GetEmployeesWithDetails

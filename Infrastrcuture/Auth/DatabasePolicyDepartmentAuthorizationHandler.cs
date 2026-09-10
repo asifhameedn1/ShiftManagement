@@ -38,11 +38,13 @@ public sealed class DatabasePolicyDepartmentAuthorizationHandler : Authorization
             username = username[(username.LastIndexOf('\\') + 1)..];
         }
 
-        var hasPermission = await _permissionService.HasPermissionAsync(username, requirement.PermissionName, departmentId);
-
-        if (hasPermission)
+        foreach (var permissionName in requirement.PermissionNames)
         {
-            context.Succeed(requirement);
+            if (await _permissionService.HasPermissionAsync(username, permissionName, departmentId))
+            {
+                context.Succeed(requirement);
+                return;
+            }
         }
     }
 }

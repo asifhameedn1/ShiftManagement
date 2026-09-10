@@ -19,10 +19,15 @@ public sealed class DatabasePolicyProvider : DefaultAuthorizationPolicyProvider
             return policy;
         }
 
-        // If not, dynamically build a policy targeting this permission name
+        // If not, dynamically build a policy targeting this permission name.
+        // A comma-separated policy name (e.g. "Employee.View,Employee.Manage")
+        // is treated as "user needs any one of these permissions".
+        var permissionNames = policyName
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
         return new AuthorizationPolicyBuilder()
             .RequireAuthenticatedUser()
-            .AddRequirements(new DatabasePolicyRequirement(policyName))
+            .AddRequirements(new DatabasePolicyRequirement(permissionNames))
             .Build();
     }
 }
