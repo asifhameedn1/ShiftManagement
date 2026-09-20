@@ -330,25 +330,14 @@
                 </div>
 
                 <div class="drawer-form-group">
-                    <label class="drawer-form-label">Department</label>
-                    <select class="drawer-form-input" value="@_selectedDepartmentId" @onchange="OnDepartmentChanged">
-                        @foreach (var dept in _departments)
-                        {
-                            <option value="@dept.Id">@dept.Name</option>
-                        }
-                    </select>
-                </div>
-
-                <div class="drawer-form-group">
-                    <label class="drawer-form-label">Assigned Roles in @(_departments.FirstOrDefault(d => d.Id == _selectedDepartmentId)?.Name ?? "selected department")</label>
+                    <label class="drawer-form-label">Roles &amp; Departments</label>
                     <div class="permissions-checklist">
                         @foreach (var role in _roles)
                         {
-                            <label class="checklist-item">
-                                <input type="checkbox" 
-                                       checked="@_empFormRoleIds.Contains(role.Id)"
-                                       @onchange="(e) => ToggleRole(role.Id, e.Value)" />
-                                <div class="checklist-item__details">
+                            var selectedDepts = _empRoleDepartments.GetValueOrDefault(role.Id);
+                            var isActive = selectedDepts is { Count: > 0 };
+                            <div class="role-card @(isActive ? "role-card--active" : "")">
+                                <div class="role-card__header">
                                     <span class="checklist-item__title">@role.Name</span>
                                     <span class="checklist-item__desc">
                                         @if (role.Name == "Admin")
@@ -369,7 +358,19 @@
                                         }
                                     </span>
                                 </div>
-                            </label>
+                                <div class="role-card__depts">
+                                    @foreach (var dept in _departments)
+                                    {
+                                        var isSelected = selectedDepts?.Contains(dept.Id) == true;
+                                        <label class="dept-chip @(isSelected ? "dept-chip--selected" : "")">
+                                            <input type="checkbox"
+                                                   checked="@isSelected"
+                                                   @onchange="(e) => ToggleRoleDepartment(role.Id, dept.Id, e.Value)" />
+                                            @dept.Name
+                                        </label>
+                                    }
+                                </div>
+                            </div>
                         }
                     </div>
                 </div>
@@ -426,8 +427,7 @@
     // Drawer state - Employee
     private bool _isEmpDrawerOpen = false;
     private EmployeeWithRolesDto? _selectedEmp = null;
-    private Guid _selectedDepartmentId = Guid.Empty;
-    private List<Guid> _empFormRoleIds = [];
+    private Dictionary<Guid, HashSet<Guid>> _empRoleDepartments = [];
 
     protected override async Task OnInitializedAsync()
     {
@@ -615,10 +615,10 @@
     private void OpenEditEmpRolesDrawer(EmployeeWithRolesDto emp)
     {
         _selectedEmp = emp;
-        _selectedDepartmentId = emp.DepartmentRoles.FirstOrDefault()?.DepartmentId
-            ?? _departments.FirstOrDefault()?.Id
-            ?? Guid.Empty;
-        _empFormRoleIds = RoleIdsForSelectedDepartment();
+        _empRoleDepartments = emp.DepartmentRoles
+            .SelectMany(d => d.Roles.Select(r => (RoleId: r.Id, d.DepartmentId)))
+            .GroupBy(x => x.RoleId)
+            .ToDictionary(g => g.Key, g => g.Select(x => x.DepartmentId).ToHashSet());
         _isEmpDrawerOpen = true;
     }
 
@@ -626,52 +626,41 @@
     {
         _isEmpDrawerOpen = false;
         _selectedEmp = null;
-        _selectedDepartmentId = Guid.Empty;
-        _empFormRoleIds = [];
+        _empRoleDepartments = [];
     }
 
-    private List<Guid> RoleIdsForSelectedDepartment()
-    {
-        if (_selectedEmp is null) return [];
-
-        return _selectedEmp.DepartmentRoles
-            .Where(d => d.DepartmentId == _selectedDepartmentId)
-            .SelectMany(d => d.Roles)
-            .Select(r => r.Id)
-            .ToList();
-    }
-
-    private void OnDepartmentChanged(Microsoft.AspNetCore.Components.ChangeEventArgs e)
-    {
-        if (Guid.TryParse(e.Value?.ToString(), out var departmentId))
-        {
-            _selectedDepartmentId = departmentId;
-            _empFormRoleIds = RoleIdsForSelectedDepartment();
-        }
-    }
-
-    private void ToggleRole(Guid roleId, object? checkedValue)
+    private void ToggleRoleDepartment(Guid roleId, Guid departmentId, object? checkedValue)
     {
         var isChecked = checkedValue is bool b && b;
         if (isChecked)
         {
-            if (!_empFormRoleIds.Contains(roleId))
-                _empFormRoleIds.Add(roleId);
+            if (!_empRoleDepartments.TryGetValue(roleId, out var departments))
+            {
+                departments = [];
+                _empRoleDepartments[roleId] = departments;
+            }
+            departments.Add(departmentId);
         }
-        else
+        else if (_empRoleDepartments.TryGetValue(roleId, out var departments))
         {
-            _empFormRoleIds.Remove(roleId);
+            departments.Remove(departmentId);
+            if (departments.Count == 0)
+                _empRoleDepartments.Remove(roleId);
         }
     }
 
     private async Task SaveEmpRolesAsync()
     {
-        if (_selectedEmp == null || _selectedDepartmentId == Guid.Empty) return;
+        if (_selectedEmp == null) return;
 
         _submitting = true;
         StateHasChanged();
 
-        var result = await UpdateEmployeeDepartmentRolesHandler.HandleAsync(new UpdateEmployeeDepartmentRolesCommand(_selectedEmp.Id, _selectedDepartmentId, _empFormRoleIds));
+        var assignments = _empRoleDepartments
+            .Select(kv => new RoleDepartmentsAssignment(kv.Key, kv.Value.ToList()))
+            .ToList();
+
+        var result = await UpdateEmployeeDepartmentRolesHandler.HandleAsync(new UpdateEmployeeDepartmentRolesCommand(_selectedEmp.Id, assignments));
 
         _submitting = false;
 

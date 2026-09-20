@@ -519,6 +519,64 @@
     color: var(--emp-muted);
 }
 
+/* Role card with its own department selection */
+.role-card {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--emp-border);
+    border-radius: var(--emp-r-sm);
+    padding: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    transition: all var(--emp-t);
+}
+
+.role-card--active {
+    border-color: var(--emp-border-h);
+    background: rgba(99, 140, 255, 0.05);
+}
+
+.role-card__header {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+
+.role-card__depts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+.dept-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.25rem 0.6rem;
+    font-size: 0.75rem;
+    color: var(--emp-muted);
+    border: 1px solid var(--emp-border);
+    border-radius: 999px;
+    cursor: pointer;
+    user-select: none;
+    transition: all var(--emp-t);
+}
+
+.dept-chip:hover {
+    border-color: var(--emp-border-h);
+}
+
+.dept-chip--selected {
+    color: #fff;
+    background: rgba(99, 140, 255, 0.18);
+    border-color: rgba(99, 140, 255, 0.5);
+}
+
+.dept-chip input[type="checkbox"] {
+    margin: 0;
+    cursor: pointer;
+}
+
 /* ══════════════════════════════════════════════════════════════════════════
    EMPLOYEE DRAWER STYLES
    ══════════════════════════════════════════════════════════════════════════ */

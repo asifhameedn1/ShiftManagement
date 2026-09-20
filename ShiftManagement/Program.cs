@@ -3,7 +3,6 @@ using Infrastructure;
 using Microsoft.AspNetCore.Authentication.Negotiate;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.EntityFrameworkCore;
-using ShiftManagement.Auth;
 using ShiftManagement.Components;
 using Syncfusion.Blazor;
 
@@ -17,9 +16,6 @@ builder.Services.AddAuthentication(NegotiateDefaults.AuthenticationScheme)
     .AddNegotiate();
 builder.Services.AddAuthorization();
 
-// Persist the Windows identity captured during SSR into the interactive Blazor circuit.
-// This prevents a blank page caused by Windows Auth not re-negotiating over WebSocket.
-builder.Services.AddScoped<AuthenticationStateProvider, PersistingAuthenticationStateProvider>();
 builder.Services.AddCascadingAuthenticationState();
 
 // Clean Architecture layers
@@ -49,11 +45,15 @@ app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
 
+// Must run after authentication so it does not swallow the Negotiate 401 challenge; the second
+// UseAuthorization satisfies endpoint auth metadata on the re-executed /not-found page.
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
+app.UseAuthorization();
 
 app.UseAntiforgery();
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
-    .AddInteractiveServerRenderMode();
+    .AddInteractiveServerRenderMode()
+    .RequireAuthorization();
 
 app.Run();
