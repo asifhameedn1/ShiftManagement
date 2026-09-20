@@ -1,0 +1,53 @@
+@page "/home2"
+@attribute [Authorize(Policy = "Shift.View")]
+@rendermode InteractiveServer
+
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Application.Features.Shifts.Queries.GetShifts
+@using Application.Common.Interfaces
+@using Domain.Common
+@using BlazorBootstrap
+
+@inject AuthenticationStateProvider AuthStateProvider
+
+<PageTitle>Shift Dashboard – ShiftManagement</PageTitle>
+
+<Dropdown>
+    <DropdownToggleButton Color="ButtonColor.Link" Class="text-body p-1">
+        <i class="bi bi-three-dots-vertical"></i>
+    </DropdownToggleButton>
+    <DropdownMenu Position="DropdownMenuPosition.End">
+        <DropdownItem Type="DropdownItemType.Button" @onclick='() => DropDownClicked("Edit")'>Edit</DropdownItem>
+        <DropdownItem Type="DropdownItemType.Button" @onclick='() => DropDownClicked("Duplicate")'>Duplicate</DropdownItem>
+        <DropdownDivider />
+        <DropdownItem Type="DropdownItemType.Button" Class="text-danger" @onclick='() => DropDownClicked("Delete")'>Delete</DropdownItem>
+    </DropdownMenu>
+</Dropdown>
+
+@code{
+private async Task DropDownClicked(string action)
+{
+    var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+    var user = authState.User;
+
+    if (user.Identity?.IsAuthenticated == true)
+    {
+        // Handle the action based on the clicked item
+        switch (action)
+        {
+            case "Edit":
+                // Logic for editing
+                break;
+            case "Duplicate":
+                // Logic for duplicating
+                break;
+            case "Delete":
+                // Logic for deleting
+                break;
+        }
+    }
+
+}
+}
+
