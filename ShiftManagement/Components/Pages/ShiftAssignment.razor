@@ -1,5 +1,5 @@
 @page "/shift-assignment"
-@attribute [Authorize(Policy = "Shift.Manage")]
+@attribute [Authorize(Policy = "Shift.Manage,Shift.View")]
 @rendermode InteractiveServer
 
 @using Application.Common.Models
@@ -264,7 +264,7 @@
     private async Task LoadDepartmentsAsync()
     {
         _deptState = LoadState.Loading;
-        var result = await GetDepartmentsHandler.HandleAsync(new GetDepartmentsWithLocationsQuery());
+        var result = await GetDepartmentsHandler.HandleAsync(new GetDepartmentsWithLocationsQuery("Shift.Manage"));
         if (result.IsSuccess)
         {
             _departments = result.Value;

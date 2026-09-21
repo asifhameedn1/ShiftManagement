@@ -11,4 +11,10 @@ public interface IPermissionService
         string permissionName,
         Guid? departmentId = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>Returns the ids of the departments in which the employee holds the permission.</summary>
+    Task<IReadOnlyList<Guid>> GetDepartmentIdsWithPermissionAsync(
+        string username,
+        string permissionName,
+        CancellationToken cancellationToken = default);
 }

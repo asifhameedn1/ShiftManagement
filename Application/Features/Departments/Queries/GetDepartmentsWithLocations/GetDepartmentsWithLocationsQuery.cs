@@ -2,8 +2,11 @@ using Domain.Common;
 
 namespace Application.Features.Departments.Queries.GetDepartmentsWithLocations;
 
-/// <summary>Returns all departments with their nested locations.</summary>
-public sealed record GetDepartmentsWithLocationsQuery;
+/// <summary>
+/// Returns departments with their nested locations. When <paramref name="RequiredPermission"/> is
+/// set, only departments in which the current user holds that permission are returned.
+/// </summary>
+public sealed record GetDepartmentsWithLocationsQuery(string? RequiredPermission = null);
 
 public sealed record DepartmentDto(Guid Id, string Name, IReadOnlyList<LocationDto> Locations);
 

@@ -30,20 +30,26 @@ public sealed class CreateShiftCommandHandler
             return Result.Failure<Guid>(new Error("Security.Unauthenticated", "User is not authenticated."));
         }
 
-        var isAuthorized = await _permissionService.HasPermissionAsync(currentUsername, "Shift.Manage", cancellationToken: cancellationToken);
+        // Verify employee exists
+        var employee = await _context.Employees
+            .AsNoTracking()
+            .Where(e => e.Id == request.EmployeeId && e.IsActive)
+            .Select(e => new { DepartmentId = e.Location != null ? (Guid?)e.Location.DepartmentId : null })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (employee is null)
+            return Result.Failure<Guid>(
+                Error.NotFound("Employee", $"Employee '{request.EmployeeId}' was not found or is inactive."));
+
+        // Shift.Manage must be held in the department the employee belongs to
+        var isAuthorized = employee.DepartmentId.HasValue
+            && await _permissionService.HasPermissionAsync(
+                currentUsername, "Shift.Manage", employee.DepartmentId.Value, cancellationToken);
 
         if (!isAuthorized)
         {
-            return Result.Failure<Guid>(new Error("Security.Unauthorized", "You do not have permission to manage shifts."));
+            return Result.Failure<Guid>(new Error("Security.Unauthorized", "You do not have permission to manage shifts for this department."));
         }
-
-        // Verify employee exists
-        var employeeExists = await _context.Employees
-            .AnyAsync(e => e.Id == request.EmployeeId && e.IsActive, cancellationToken);
-
-        if (!employeeExists)
-            return Result.Failure<Guid>(
-                Error.NotFound("Employee", $"Employee '{request.EmployeeId}' was not found or is inactive."));
 
         // Check for overlapping shifts on the same day
         var hasOverlap = await _context.Shifts.AnyAsync(s =>

@@ -31,4 +31,18 @@ public sealed class PermissionService : IPermissionService
             .SelectMany(dr => dr.Role.Permissions)
             .AnyAsync(p => p.Name == permissionName, cancellationToken);
     }
+
+    public async Task<IReadOnlyList<Guid>> GetDepartmentIdsWithPermissionAsync(
+        string username,
+        string permissionName,
+        CancellationToken cancellationToken = default)
+    {
+        return await _context.Employees
+            .Where(e => e.Username == username && e.IsActive)
+            .SelectMany(e => e.DepartmentRoles)
+            .Where(dr => dr.Role.Permissions.Any(p => p.Name == permissionName))
+            .Select(dr => dr.DepartmentId)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+    }
 }

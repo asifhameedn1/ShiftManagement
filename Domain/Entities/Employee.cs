@@ -24,9 +24,6 @@ public sealed class Employee
     public IReadOnlyCollection<Shift> Shifts => _shifts.AsReadOnly();
     private readonly List<Shift> _shifts = [];
 
-    public IReadOnlyCollection<Department> Departments => _departments.AsReadOnly();
-    private readonly List<Department> _departments = [];
-
     public IReadOnlyCollection<EmployeeDepartmentRole> DepartmentRoles => _departmentRoles.AsReadOnly();
     private readonly List<EmployeeDepartmentRole> _departmentRoles = [];
 
@@ -61,10 +58,7 @@ public sealed class Employee
     /// </summary>
     public EmployeeDepartmentRole? AssignRole(Department department, Role role)
     {
-        if (!_departments.Any(d => d.Id == department.Id))
-        {
-            _departments.Add(department);
-        }
+       
 
         if (_departmentRoles.Any(dr => dr.DepartmentId == department.Id && dr.RoleId == role.Id))
         {
@@ -82,16 +76,7 @@ public sealed class Employee
         if (existing is not null)
         {
             _departmentRoles.Remove(existing);
-        }
-
-        if (!_departmentRoles.Any(dr => dr.DepartmentId == departmentId))
-        {
-            var department = _departments.FirstOrDefault(d => d.Id == departmentId);
-            if (department is not null)
-            {
-                _departments.Remove(department);
-            }
-        }
+        }       
     }
 
     public void UpdateName(string name)
