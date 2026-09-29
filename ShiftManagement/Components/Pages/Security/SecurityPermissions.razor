@@ -1,0 +1,24 @@
+﻿@page "/security-permissions"
+@attribute [Authorize(Policy = "Role.Manage")]
+@rendermode InteractiveServer
+
+@using Microsoft.AspNetCore.Authorization
+@using BlazorBootstrap
+<h3>SecurityPermissions</h3>
+
+<Tabs>
+    <Tab Title="Roles">
+        <Content>
+            <RoleManagement />
+        </Content>
+    </Tab>
+    <Tab Title="Users">
+        <Content>
+            <UserManagement />
+        </Content>
+    </Tab>
+</Tabs>
+
+@code {
+
+}

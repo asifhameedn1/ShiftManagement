@@ -1,0 +1,150 @@
+﻿@using Application.Common.Interfaces
+@using Application.Features.Departments.Queries.GetDepartmentsWithLocations
+@using Application.Features.Security.Dtos
+@using Application.Features.Security.Queries.GetEmployeesWithRoles
+@using BlazorBootstrap
+@using Domain.Common
+
+@inject IHandler<GetEmployeesWithRolesQuery, Result<IReadOnlyList<EmployeeWithRolesDto>>> GetEmployeesHandler
+@inject IHandler<GetDepartmentsWithLocationsQuery, Result<IReadOnlyList<DepartmentDto>>> GetDepartmentsHandler
+<h3>UserManagement</h3>
+@{
+    var filteredEmps = _employees.ToList();
+    @if (filteredEmps.Count == 0)
+    {
+        <div class="sa-empty">
+            <span class="sa-empty__icon">🔍</span>
+            <p class="sa-empty__title">No employees found</p>
+            <p class="sa-empty__sub">Try adjusting your search terms.</p>
+        </div>
+    }
+    else
+    {
+        <div class="table-container">
+            <table class="sec-table">
+                <thead>
+                    <tr>
+                        <th>Employee</th>
+                        <th>Username</th>
+                        <th>Assigned Roles</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var emp in filteredEmps)
+                    {
+                        <tr>
+                            <td>
+                                <div class="role-cell">
+                                    <div class="emp-avatar">@GetInitials(emp.Name)</div>
+                                    <span class="role-name">@emp.Name</span>
+                                </div>
+                            </td>
+                            <td>
+                                <span class="emp-user">@emp.Username</span>
+                            </td>
+                            <td>
+                                <div class="badge-container">
+                                    @if (emp.DepartmentRoles.Count == 0)
+                                    {
+                                        <span class="badge-none">No Roles</span>
+                                    }
+                                    else
+                                    {
+                                        @foreach (var deptRoles in emp.DepartmentRoles.OrderBy(d => d.DepartmentName))
+                                        {
+                                            @foreach (var role in deptRoles.Roles.OrderBy(r => r.Name))
+                                            {
+                                                <span class="badge-role">
+                                                    @deptRoles.DepartmentName: @role.Name
+                                                </span>
+                                            }
+                                        }
+                                    }
+                                </div>
+                            </td>
+                            <td class="text-end">
+                                <button class="btn-action-edit" @onclick="() => OpenEditEmpRolesDrawer(emp)">
+                                    🔑 Manage Roles
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+<Offcanvas Title="Edit Employee Roles" 
+           Placement="Placement.End" 
+           Size="OffcanvasSize.Large" 
+           @ref="empRolesDrawer">
+      <HeaderTemplate>
+        <strong>Edit Employee Roles</strong>
+    </HeaderTemplate>
+    <BodyTemplate>
+        <!-- Form or role list content goes here -->
+    </BodyTemplate>
+    <FooterTemplate>
+        <!-- Action buttons go here -->
+    </FooterTemplate>
+</Offcanvas>
+@code {
+    private Offcanvas empRolesDrawer;
+    private enum LoadState { Loading, Success, Error }
+    private LoadState _loadState = LoadState.Loading;
+    private IReadOnlyList<EmployeeWithRolesDto> _employees = [];
+    private IReadOnlyList<DepartmentDto> _departments = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+    }
+
+
+    private async Task LoadDataAsync()
+    {
+        _loadState = LoadState.Loading;
+        StateHasChanged();
+
+
+        var empsTask = GetEmployeesHandler.HandleAsync(new GetEmployeesWithRolesQuery());
+        var deptsTask = GetDepartmentsHandler.HandleAsync(new GetDepartmentsWithLocationsQuery());
+
+        await Task.WhenAll(empsTask, deptsTask);
+
+        var empsRes = empsTask.Result;
+        var deptsRes = deptsTask.Result;
+
+        if (empsRes.IsSuccess && deptsRes.IsSuccess)
+        {
+            _employees = empsRes.Value;
+            _departments = deptsRes.Value;
+            _loadState = LoadState.Success;
+        }
+
+        else
+        {
+            _loadState = LoadState.Error;
+        }
+    }
+
+    private string GetInitials(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "?";
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0) return "?";
+        if (parts.Length == 1) return parts[0][0].ToString().ToUpper();
+        return (parts[0][0].ToString() + parts[parts.Length - 1][0].ToString()).ToUpper();
+    }
+
+    private async Task OpenEditEmpRolesDrawer(EmployeeWithRolesDto emp)
+    {
+        await empRolesDrawer.ShowAsync();
+    }
+
+    private async Task CloseEditEmpRolesDrawer()
+    {
+        await empRolesDrawer.HideAsync();
+    }
+}

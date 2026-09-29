@@ -2,6 +2,8 @@
     position: relative;
     display: flex;
     flex-direction: column;
+    padding:2% 4%;
+    border:1px solid #545151
 }
 
 main {
